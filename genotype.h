@@ -108,6 +108,8 @@ public:
                 std::string("ERROR: Cannot open file: " + out + ".eff"));
         }
         int num_completed = 0;
+        double prev_completed = 0;
+        double total_snp = static_cast<double>(m_existed_snps.size());
         for (auto&& snp : m_existed_snps) {
             if (prev_file.compare(snp.file) != 0) {
                 if (bed_file.is_open()) {
@@ -219,14 +221,14 @@ public:
                 }
                 uii += BITCT2;
             } while (uii < m_sample_ct);
-            if (num_completed / m_existed_snps.size() * 100 % 5 == 0) {
-                std::cerr << "Processed "
-                          << num_completed / m_existed_snps.size() * 100
-                          << "% of SNPs\r";
+            if (num_completed / total_snp - prev_completed > 0.01) {
+                fprintf(stderr, "\rProcessing %03.2f%%",
+                        num_completed / total_snp);
+                prev_completed = num_completed / total_snp;
             }
             num_completed++;
         }
-        std::cerr << std::endl;
+        fprintf(stderr, "\n");
     }
     std::string name(size_t i_sample)
     {

@@ -23,6 +23,7 @@
 void usage()
 {
     fprintf(stderr, "Biobank Simulation Tool\n");
+    fprintf(stderr, "Version 1.0 (20th Feb, 2019)\n");
     fprintf(stderr, "Usage: BBS [options]\n");
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "    --input   | -i    Input file prefix\n");

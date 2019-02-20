@@ -188,6 +188,8 @@ public:
                 mean = maf * 2;
                 var = (sqrt(2.0 * maf * (1.0 - maf)));
             }
+            uii = 0;
+            ujj = 0;
             // now start calculating the score
             lbptr = genotype_byte.data();
             do
@@ -514,6 +516,8 @@ private:
         }
         // now start calculating the score
         lbptr = geno_byte.data();
+        uii = 0;
+        ujj = 0;
         do
         {
             ulii = ~(*lbptr++);

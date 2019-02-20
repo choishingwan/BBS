@@ -110,6 +110,9 @@ public:
         int num_completed = 0;
         double prev_completed = 0;
         double total_snp = static_cast<double>(m_existed_snps.size());
+
+        fprintf(stderr, "\rProcessing %03.2f%%",
+                num_completed / total_snp * 100);
         for (auto&& snp : m_existed_snps) {
             if (prev_file.compare(snp.file) != 0) {
                 if (bed_file.is_open()) {

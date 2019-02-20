@@ -223,7 +223,7 @@ public:
             } while (uii < m_sample_ct);
             if (num_completed / total_snp - prev_completed > 0.01) {
                 fprintf(stderr, "\rProcessing %03.2f%%",
-                        num_completed / total_snp);
+                        num_completed / total_snp * 100);
                 prev_completed = num_completed / total_snp;
             }
             num_completed++;

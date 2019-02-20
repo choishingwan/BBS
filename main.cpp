@@ -211,7 +211,7 @@ int main(int argc, char* argv[])
     // desired phenotypes
 
     // std::vector<double> pheno(geno.sample_size(), 0.0);
-    std::cerr << "Calculate Variane of X Beta" << std::endl;
+    std::cerr << "Calculate Variance of X Beta" << std::endl;
     misc::RunningStat rs;
     assert(geno.sample_size() == score.size());
     for (size_t i = 0; i < score.size(); ++i) {

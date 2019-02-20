@@ -91,6 +91,16 @@ public:
         std::string prev_file = "";
         std::streampos prev_loc = 0;
         std::ofstream output;
+        uint32_t uii = 0;
+        uintptr_t ulii = 0;
+        uint32_t ujj;
+        uint32_t ukk;
+        uint32_t sample_idx = 0;
+        size_t nmiss = 0;
+        size_t num_not_xvar = 0;
+        size_t total = 0;
+        // do two pass. First pass get the MAF
+        uintptr_t* lbptr;
         output.open(std::string(out + ".eff").c_str());
         if (!output.is_open()) {
             throw std::runtime_error(
@@ -129,7 +139,87 @@ public:
             prev_loc = bed_file.tellg();
             double eff = effect();
             output << eff << std::endl;
-            get_score(score, genotype_byte, eff, standardize);
+            // get_score(score, genotype_byte, eff, standardize);
+            if (score.size() == 0) {
+                return;
+            }
+            lbptr = genotype_byte.data();
+            do
+            {
+                ulii = ~(*lbptr++);
+                if (uii + BITCT2 > m_unfiltered_sample_ct) {
+                    ulii &=
+                        (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
+                        - ONELU;
+                }
+                ujj = 0;
+                while (ulii) {
+                    if (uii + (ujj / 2) >= m_sample_ct) {
+                        break;
+                    }
+                    ukk = (ulii >> ujj) & 3;
+                    sample_idx = uii + (ujj / 2);
+                    if (!m_sample_names[sample_idx].x_var) {
+                        ++num_not_xvar;
+                        switch (ukk)
+                        {
+                        default: break;
+                        case 1: total += 1; break;
+                        case 2: nmiss++; break;
+                        case 3: total += 2; break;
+                        }
+                    }
+                    ujj += 2;
+                }
+                uii += BITCT2;
+            } while (uii < m_sample_ct);
+
+            if (num_not_xvar - nmiss == 0) {
+                throw std::runtime_error("ERROR: Genotype missingness of 1!");
+            }
+            double maf = (static_cast<double>(total)
+                          / (static_cast<double>(num_not_xvar - nmiss)
+                             * 2.0)); // MAF does not count missing
+            double var = 1.0;
+            double mean = 0.0;
+            double miss_dose = maf * 2.0;
+            if (standardize) {
+                mean = maf * 2;
+                var = (sqrt(2.0 * maf * (1.0 - maf)));
+            }
+            // now start calculating the score
+            lbptr = genotype_byte.data();
+            do
+            {
+                ulii = ~(*lbptr++);
+                if (uii + BITCT2 > m_unfiltered_sample_ct) {
+                    ulii &=
+                        (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
+                        - ONELU;
+                }
+                ujj = 0;
+                while (ulii) {
+                    // ujj = CTZLU(ulii) & (BITCT - 2);
+                    if (uii + (ujj / 2) >= m_sample_ct) {
+                        break;
+                    }
+                    ukk = (ulii >> ujj) & 3;
+                    sample_idx = uii + (ujj / 2);
+                    switch (ukk)
+                    {
+                    default: break;
+                    case 1:
+                        score[sample_idx] += eff * (ukk - mean) / var;
+                        break;
+                    case 2:
+                        score[sample_idx] += eff * (miss_dose - mean) / var;
+                        break;
+                    case 3: score[sample_idx] += eff * (2 - mean) / var; break;
+                    }
+                    ujj += 2;
+                }
+                uii += BITCT2;
+            } while (uii < m_sample_ct);
         }
     }
     std::string name(size_t i_sample)
@@ -360,7 +450,6 @@ private:
         if (score.size() == 0) {
             return;
         }
-        const size_t num_sample = score.size();
         uint32_t uii = 0;
         uintptr_t ulii = 0;
         uint32_t ujj;
@@ -391,7 +480,7 @@ private:
                     switch (ukk)
                     {
                     default: break;
-                    case 1: total += ukk; break;
+                    case 1: total += 1; break;
                     case 2: nmiss++; break;
                     case 3: total += 2; break;
                     }
@@ -399,7 +488,7 @@ private:
                 ujj += 2;
             }
             uii += BITCT2;
-        } while (uii < num_sample);
+        } while (uii < m_sample_ct);
 
         if (num_not_xvar - nmiss == 0) {
             throw std::runtime_error("ERROR: Genotype missingness of 1!");
@@ -443,7 +532,7 @@ private:
                 ujj += 2;
             }
             uii += BITCT2;
-        } while (uii < num_sample);
+        } while (uii < m_sample_ct);
     }
 };
 

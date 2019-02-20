@@ -34,9 +34,10 @@ std::vector<std::string> Genotype::set_genotype_files(const std::string& prefix)
     return genotype_files;
 }
 
-void Genotype::load_samples(const std::unordered_set<std::string>& sample_list)
+void Genotype::load_samples(const std::unordered_set<std::string>& sample_list,
+                            const std::unordered_set<std::string>& related_list)
 {
-    m_sample_names = gen_sample_vector(sample_list);
+    m_sample_names = gen_sample_vector(sample_list, related_list);
     std::string message = std::to_string(m_unfiltered_sample_ct) + " people ("
                           + std::to_string(m_num_male) + " male(s), "
                           + std::to_string(m_num_female)
@@ -46,7 +47,8 @@ void Genotype::load_samples(const std::unordered_set<std::string>& sample_list)
 
 
 std::vector<Sample>
-Genotype::gen_sample_vector(const std::unordered_set<std::string>& sample_list)
+Genotype::gen_sample_vector(const std::unordered_set<std::string>& sample_list,
+                            const std::unordered_set<std::string>& related_list)
 {
     assert(m_genotype_files.size() > 0);
     std::string fam_name = m_genotype_files.front() + ".fam";
@@ -108,10 +110,19 @@ Genotype::gen_sample_vector(const std::unordered_set<std::string>& sample_list)
         inclusion = (no_exclusion
                      || sample_list.find(cur_sample.IID) != sample_list.end());
         if (inclusion) {
-            SET_BIT(sample_index, m_founder_info.data());
+            if (related_list.find(cur_sample.IID) == related_list.end()) {
+                // only store samples not found in the related list
+                // so that when we calculate MAF using the founder_info
+                // vector, we will always be fine
+                SET_BIT(sample_index, m_founder_info.data());
+            }
+            else
+            {
+                cur_sample.x_var = true;
+            }
             SET_BIT(sample_index, m_sample_include.data());
+            ++m_sample_ct;
         }
-        m_sample_ct += inclusion;
         if (token[5].compare("1") == 0) {
             m_num_male++;
         }
@@ -129,6 +140,9 @@ Genotype::gen_sample_vector(const std::unordered_set<std::string>& sample_list)
         }
     }
     famfile.close();
+    // this is the temporary storage for reading in genotype
+    // initializing here allow us to save time by not doing
+    // initialization each time we read in a SNP
     m_tmp_genotype.resize(unfiltered_sample_ctl * 2, 0);
     return sample_name;
 }
@@ -140,17 +154,37 @@ void Genotype::load_snps(const std::unordered_set<std::string>& snp_list,
     std::cerr << "Read in " << m_existed_snps.size() << " SNPs" << std::endl;
     // now randomly select SNPs
     std::mt19937 g(seed);
-    size_t num_snp = num_selected;
-    size_t index = 0;
-    for (auto iter = m_existed_snps.begin();
-         (iter != m_existed_snps.end()) && (num_snp > 0);
-         ++iter, index++, --num_snp)
+    size_t num_selected_snp = num_selected;
+    if (num_selected_snp > m_existed_snps.size() / 2.0) {
+        // we want more than half of the SNPs
+        // so we will sort SNPs to the back at random to speed
+        // up the sorting
+        size_t num_exclude_snp = m_existed_snps.size() - num_selected_snp;
+        std::vector<SNP>::reverse_iterator iter = m_existed_snps.rbegin();
+        size_t index = m_existed_snps.size() - 1;
+        for (; iter != m_existed_snps.rend();
+             ++iter, index--, --num_exclude_snp)
+        {
+            std::uniform_int_distribution<int> dist(0, index);
+            const size_t random_index = static_cast<size_t>(dist(g));
+            if (*iter != m_existed_snps.at(random_index)) {
+                std::swap(m_existed_snps.at(random_index), *iter);
+            }
+        }
+    }
+    else
     {
-        std::uniform_int_distribution<int> dist(index,
-                                                m_existed_snps.size() - 1);
-        const size_t random_index = static_cast<size_t>(dist(g));
-        if (*iter != m_existed_snps.at(random_index)) {
-            std::swap(m_existed_snps.at(random_index), *iter);
+        size_t index = 0;
+        for (auto iter = m_existed_snps.begin();
+             (iter != m_existed_snps.end()) && (num_selected_snp > 0);
+             ++iter, index++, --num_selected_snp)
+        {
+            std::uniform_int_distribution<int> dist(index,
+                                                    m_existed_snps.size() - 1);
+            const size_t random_index = static_cast<size_t>(dist(g));
+            if (*iter != m_existed_snps.at(random_index)) {
+                std::swap(m_existed_snps.at(random_index), *iter);
+            }
         }
     }
     m_existed_snps.resize(num_selected);
@@ -165,6 +199,7 @@ void Genotype::load_snps(const std::unordered_set<std::string>& snp_list,
 
     std::cerr << m_existed_snps.size() << " SNPs remaining" << std::endl;
 }
+
 
 std::vector<SNP>
 Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list)
@@ -181,7 +216,7 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list)
                 "Error: Cannot open bim file: " + bim_name;
             throw std::runtime_error(error_message);
         }
-        size_t num_snp_read = 0;
+        int num_snp_read = 0;
         std::string prev_chr = "";
         while (std::getline(bim, line)) {
             misc::trim(line);
@@ -209,14 +244,14 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list)
         }
         bed.seekg(m_bed_offset, std::ios_base::beg);
         // now go through the bim & bed file and perform filtering
-        num_snp_read = 0;
-        int prev_snp_processed = 0;
+        num_snp_read = -1;
+        int prev_snp_processed = -2;
 
         bool no_extraction = snp_list.empty();
         while (std::getline(bim, line)) {
             misc::trim(line);
             if (line.empty()) continue;
-            num_snp_read++;
+            ++num_snp_read;
             std::vector<std::string> bim_info = misc::split(line);
             if (!no_extraction && snp_list.find(bim_info[1]) == snp_list.end())
                 continue;
@@ -224,7 +259,8 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list)
                 // skip unread lines
                 if (!bed.seekg(m_bed_offset
                                    + ((num_snp_read - 1)
-                                      * ((uint64_t) unfiltered_sample_ct4)),
+                                      * (static_cast<uint64_t>(
+                                            unfiltered_sample_ct4))),
                                std::ios_base::beg))
                 {
                     std::string error_message =
@@ -232,10 +268,11 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list)
                     throw std::runtime_error(error_message);
                 }
             }
-            prev_snp_processed = (num_snp_read - 1);
+            prev_snp_processed = num_snp_read;
             // get the location of the SNP in the binary file
             // this is used in clumping and PRS calculation which
             // allow us to jump directly to the SNP of interest
+            // tellg is correct here as we didn't actually read the file
             std::streampos byte_pos = bed.tellg();
             snp_info.push_back(SNP(std::string(prefix + ".bed"), byte_pos));
         }
@@ -325,7 +362,7 @@ void Genotype::check_bed(const std::string& bed_name, const size_t num_marker)
     bed.close();
 }
 
-
+// this one is for fixed effect
 void Genotype::get_xbeta(std::vector<double>& score, double fixed_effect,
                          bool standardize)
 {
@@ -333,7 +370,6 @@ void Genotype::get_xbeta(std::vector<double>& score, double fixed_effect,
     // for array size
     const uintptr_t unfiltered_sample_ctl =
         BITCT_TO_WORDCT(m_unfiltered_sample_ct);
-    const uintptr_t unfiltered_sample_ct4 = (m_unfiltered_sample_ct + 3) / 4;
     std::ifstream bed_file;
     std::vector<uintptr_t> genotype_byte(unfiltered_sample_ctl * 2, 0);
     std::string prev_file = "";
@@ -358,7 +394,6 @@ void Genotype::get_xbeta(std::vector<double>& score, double fixed_effect,
         {
             throw std::runtime_error("Error: Cannot read the bed file!");
         }
-        prev_loc = snp.byte_pos + (std::streampos) unfiltered_sample_ct4;
         // loadbuf_raw is the temporary
 
         if (load_and_collapse_incl(m_unfiltered_sample_ct, m_sample_ct,
@@ -368,6 +403,7 @@ void Genotype::get_xbeta(std::vector<double>& score, double fixed_effect,
         {
             throw std::runtime_error("Error: Cannot read the bed file!");
         }
+        prev_loc = bed_file.tellg();
         get_score(score, genotype_byte, fixed_effect, standardize);
     }
 }

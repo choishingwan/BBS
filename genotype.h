@@ -39,22 +39,25 @@ struct Sample
 {
     std::string FID;
     std::string IID;
+    bool x_var = false;
 };
 
 class SNP
 {
 public:
-    SNP(){}
-    SNP(const std::string& f, const std::streampos& b) : file(f), byte_pos(b){}
-    SNP(const SNP &s): file(s.file), byte_pos(s.byte_pos){}
+    SNP() {}
+    SNP(const std::string& f, const std::streampos& b) : file(f), byte_pos(b) {}
+    SNP(const SNP& s) : file(s.file), byte_pos(s.byte_pos) {}
     std::string file;
     std::streampos byte_pos;
-    bool operator==(const SNP &s){
-        return (file.compare(s.file) == 0) && (byte_pos==s.byte_pos);
+    bool operator==(const SNP& s)
+    {
+        return (file.compare(s.file) == 0) && (byte_pos == s.byte_pos);
     }
 
-    bool operator!=(const SNP &s){
-        return !((file.compare(s.file) == 0) && (byte_pos==s.byte_pos));
+    bool operator!=(const SNP& s)
+    {
+        return !((file.compare(s.file) == 0) && (byte_pos == s.byte_pos));
     }
 };
 
@@ -64,7 +67,8 @@ public:
     Genotype(const std::string& prefix);
     virtual ~Genotype();
 
-    void load_samples(const std::unordered_set<std::string>& sample_list);
+    void load_samples(const std::unordered_set<std::string>& sample_list,
+                      const std::unordered_set<std::string>& related_list);
     void load_snps(const std::unordered_set<std::string>& snp_list,
                    const size_t num_selected, const size_t seed);
     size_t sample_size() const { return m_sample_ct; }
@@ -73,7 +77,7 @@ public:
 
     template <typename T>
     void get_xbeta(std::vector<double>& score, T rand, const bool standardize,
-                   const size_t seed, const std::string &out)
+                   const size_t seed, const std::string& out)
     {
         std::mt19937 g(seed);
         auto effect = std::bind(rand, g);
@@ -82,16 +86,15 @@ public:
         // for array size
         const uintptr_t unfiltered_sample_ctl =
             BITCT_TO_WORDCT(m_unfiltered_sample_ct);
-        const uintptr_t unfiltered_sample_ct4 =
-            (m_unfiltered_sample_ct + 3) / 4;
         std::ifstream bed_file;
         std::vector<uintptr_t> genotype_byte(unfiltered_sample_ctl * 2, 0);
         std::string prev_file = "";
         std::streampos prev_loc = 0;
         std::ofstream output;
-        output.open(std::string(out+".eff").c_str());
-        if(!output.is_open()){
-            throw std::runtime_error(std::string("ERROR: Cannot open file: "+out+".eff"));
+        output.open(std::string(out + ".eff").c_str());
+        if (!output.is_open()) {
+            throw std::runtime_error(
+                std::string("ERROR: Cannot open file: " + out + ".eff"));
         }
         for (auto&& snp : m_existed_snps) {
             if (prev_file.compare(snp.file) != 0) {
@@ -113,7 +116,7 @@ public:
             {
                 throw std::runtime_error("Error: Cannot read the bed file!");
             }
-            prev_loc = snp.byte_pos + (std::streampos) unfiltered_sample_ct4;
+
             // loadbuf_raw is the temporary
 
             if (load_and_collapse_incl(m_unfiltered_sample_ct, m_sample_ct,
@@ -123,22 +126,30 @@ public:
             {
                 throw std::runtime_error("Error: Cannot read the bed file!");
             }
+            prev_loc = bed_file.tellg();
             double eff = effect();
             output << eff << std::endl;
             get_score(score, genotype_byte, eff, standardize);
         }
     }
-    std::string name(size_t i_sample){
-        auto &&sample = m_sample_names.at(i_sample);
-        return std::string(sample.FID+"\t"+sample.IID);
+    std::string name(size_t i_sample)
+    {
+        auto&& sample = m_sample_names.at(i_sample);
+        return std::string(sample.FID + "\t" + sample.IID);
     }
+    bool sample_xvar(size_t i_sample)
+    {
+        return m_sample_names.at(i_sample).x_var;
+    }
+
 private:
     std::vector<std::string> set_genotype_files(const std::string& prefix);
     std::vector<std::string> m_genotype_files;
 
 
     std::vector<Sample>
-    gen_sample_vector(const std::unordered_set<std::string>& sample_list);
+    gen_sample_vector(const std::unordered_set<std::string>& sample_list,
+                      const std::unordered_set<std::string>& related_list);
     std::vector<Sample> m_sample_names;
     uintptr_t m_unfiltered_sample_ct = 0;
     uintptr_t m_sample_ct = 0;
@@ -350,16 +361,19 @@ private:
             return;
         }
         const size_t num_sample = score.size();
-        uintptr_t* lbptr = geno_byte.data();
         uint32_t uii = 0;
         uintptr_t ulii = 0;
         uint32_t ujj;
         uint32_t ukk;
         std::vector<size_t> missing_samples;
-        std::vector<int> genotype(num_sample, 0);
+        // std::vector<int> genotype(num_sample, 0);
         uint32_t sample_idx = 0;
         size_t nmiss = 0;
+        size_t num_not_xvar = 0;
         size_t total = 0;
+        // do two pass. First pass get the MAF
+
+        uintptr_t* lbptr = geno_byte.data();
         do
         {
             ulii = ~(*lbptr++);
@@ -367,54 +381,77 @@ private:
                 ulii &= (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
                         - ONELU;
             }
+            ujj = 0;
             while (ulii) {
-                ujj = CTZLU(ulii) & (BITCT - 2);
+                // ujj = CTZLU(ulii) & (BITCT - 2);
+                if (uii + (ujj / 2) >= m_sample_ct) {
+                    break;
+                }
                 ukk = (ulii >> ujj) & 3;
                 sample_idx = uii + (ujj / 2);
-                if (ukk == 1 || ukk == 3) // Because 10 is coded as missing
-                {
-                    if (sample_idx < num_sample) {
-                        int g = (ukk == 3) ? 2 : ukk;
-                        total += g;
-                        genotype[sample_idx] = g;
+                if (!m_sample_names[sample_idx].x_var) {
+                    switch (ukk)
+                    {
+                    default: ++num_not_xvar; break;
+                    case 1:
+                        total += ukk;
+                        ++num_not_xvar;
+                        break;
+                    case 2: nmiss++; break;
+                    case 3:
+                        total += 2;
+                        ++num_not_xvar;
+                        break;
                     }
                 }
-                else // this should be 2
-                {
-                    missing_samples.push_back(sample_idx);
-                    nmiss++;
-                }
-                ulii &= ~((3 * ONELU) << ujj);
+                ujj += 2;
             }
             uii += BITCT2;
         } while (uii < num_sample);
-        if (num_sample - nmiss == 0) {
+
+        if (num_not_xvar - nmiss == 0) {
             throw std::runtime_error("ERROR: Genotype missingness of 1!");
         }
-        double maf = ((double) total
-                      / ((double) (num_sample - nmiss)
+        double maf = (static_cast<double>(total)
+                      / (static_cast<double>(num_not_xvar - nmiss)
                          * 2.0)); // MAF does not count missing
-        size_t i_missing = 0;
+        double var = 1.0;
+        double mean = 0.0;
+        double miss_dose = maf * 2.0;
         if (standardize) {
-            for (size_t i_sample = 0; i_sample < num_sample; ++i_sample) {
-                if (i_missing < nmiss && i_sample == missing_samples[i_missing])
-                    i_missing++;
-                else
-                    score[i_sample] +=
-                        (((double) genotype[i_sample] - 2.0 * maf)
-                         / (sqrt(2.0 * maf * (1.0 - maf))))
-                        * effect;
-            }
+            mean = maf * 2;
+            var = (sqrt(2.0 * maf * (1.0 - maf)));
         }
-        else
+        // now start calculating the score
+        lbptr = geno_byte.data();
+        do
         {
-            for (size_t i_sample = 0; i_sample < num_sample; ++i_sample) {
-                if (i_missing < nmiss && i_sample == missing_samples[i_missing])
-                    i_missing++;
-                else
-                    score[i_sample] += ((double) genotype[i_sample]) * effect;
+            ulii = ~(*lbptr++);
+            if (uii + BITCT2 > m_unfiltered_sample_ct) {
+                ulii &= (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
+                        - ONELU;
             }
-        }
+            ujj = 0;
+            while (ulii) {
+                // ujj = CTZLU(ulii) & (BITCT - 2);
+                if (uii + (ujj / 2) >= m_sample_ct) {
+                    break;
+                }
+                ukk = (ulii >> ujj) & 3;
+                sample_idx = uii + (ujj / 2);
+                switch (ukk)
+                {
+                default: break;
+                case 1: score[sample_idx] += effect * (ukk - mean) / var; break;
+                case 2:
+                    score[sample_idx] += effect * (miss_dose - mean) / var;
+                    break;
+                case 3: score[sample_idx] += effect * (2 - mean) / var; break;
+                }
+                ujj += 2;
+            }
+            uii += BITCT2;
+        } while (uii < num_sample);
     }
 };
 

@@ -107,6 +107,7 @@ public:
             throw std::runtime_error(
                 std::string("ERROR: Cannot open file: " + out + ".eff"));
         }
+        int num_completed = 0;
         for (auto&& snp : m_existed_snps) {
             if (prev_file.compare(snp.file) != 0) {
                 if (bed_file.is_open()) {
@@ -218,7 +219,14 @@ public:
                 }
                 uii += BITCT2;
             } while (uii < m_sample_ct);
+            if (num_completed / m_existed_snps.size() * 100 % 5 == 0) {
+                std::cerr << "Processed "
+                          << num_completed / m_existed_snps.size() * 100
+                          << "% of SNPs\r";
+            }
+            num_completed++;
         }
+        std::cerr << std::endl;
     }
     std::string name(size_t i_sample)
     {
@@ -304,9 +312,9 @@ private:
         const uintptr_t* __restrict subset_mask, uint32_t raw_quaterarr_size,
         uint32_t subset_size, uintptr_t* __restrict output_quaterarr)
     {
-        // in plink 2.0, we probably want (0-based) bit raw_quaterarr_size of
-        // subset_mask to be always allocated and unset.  This removes a few
-        // special cases re: iterating past the end of arrays.
+        // in plink 2.0, we probably want (0-based) bit raw_quaterarr_size
+        // of subset_mask to be always allocated and unset.  This removes a
+        // few special cases re: iterating past the end of arrays.
         assert(subset_size);
         assert(raw_quaterarr_size >= subset_size);
         uintptr_t cur_output_word = 0;
@@ -400,7 +408,8 @@ private:
                     }
                     else
                     {
-                        // no need to mask, extra bits vanish off the high end
+                        // no need to mask, extra bits vanish off the high
+                        // end
                         *output_quaterarr++ = cur_output_word;
                         word_write_halfshift = rqa_block_len - block_len_limit;
                         if (word_write_halfshift) {

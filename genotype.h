@@ -365,8 +365,6 @@ private:
         uintptr_t ulii = 0;
         uint32_t ujj;
         uint32_t ukk;
-        std::vector<size_t> missing_samples;
-        // std::vector<int> genotype(num_sample, 0);
         uint32_t sample_idx = 0;
         size_t nmiss = 0;
         size_t num_not_xvar = 0;
@@ -383,25 +381,19 @@ private:
             }
             ujj = 0;
             while (ulii) {
-                // ujj = CTZLU(ulii) & (BITCT - 2);
                 if (uii + (ujj / 2) >= m_sample_ct) {
                     break;
                 }
                 ukk = (ulii >> ujj) & 3;
                 sample_idx = uii + (ujj / 2);
                 if (!m_sample_names[sample_idx].x_var) {
+                    ++num_not_xvar;
                     switch (ukk)
                     {
-                    default: ++num_not_xvar; break;
-                    case 1:
-                        total += ukk;
-                        ++num_not_xvar;
-                        break;
+                    default: break;
+                    case 1: total += ukk; break;
                     case 2: nmiss++; break;
-                    case 3:
-                        total += 2;
-                        ++num_not_xvar;
-                        break;
+                    case 3: total += 2; break;
                     }
                 }
                 ujj += 2;

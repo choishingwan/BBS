@@ -83,7 +83,7 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Please provide the required parameters\n");
         exit(-1);
     }
-    static const char* optString = "i:s:o:f:e:k:n:t:E:xH:h?";
+    static const char* optString = "i:s:o:f:e:k:n:t:E:x:dH:h?";
     static const struct option longOpts[] = {
         {"input", required_argument, nullptr, 'i'},
         {"seed", required_argument, nullptr, 's'},

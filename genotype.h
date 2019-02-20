@@ -79,6 +79,7 @@ public:
     void get_xbeta(std::vector<double>& score, T rand, const bool standardize,
                    const size_t seed, const std::string& out)
     {
+        assert(score.size() == m_sample_ct);
         std::mt19937 g(seed);
         auto effect = std::bind(rand, g);
 
@@ -140,9 +141,6 @@ public:
             double eff = effect();
             output << eff << std::endl;
             // get_score(score, genotype_byte, eff, standardize);
-            if (score.size() == 0) {
-                return;
-            }
             lbptr = genotype_byte.data();
             do
             {

@@ -96,7 +96,7 @@ int main(int argc, char* argv[])
         {"thread", required_argument, nullptr, 't'},
         {"std", no_argument, nullptr, 'd'},
         {"x-var", required_argument, nullptr, 'x'},
-        {"herit", no_argument, nullptr, 'H'},
+        {"herit", required_argument, nullptr, 'H'},
         {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0}};
 

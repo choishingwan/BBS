@@ -89,6 +89,11 @@ public:
         uint32_t sample_idx = 0;
         // do two pass. First pass get the MAF
         uintptr_t* lbptr;
+        double eff;
+        double maf;
+        double var = 1.0;
+        double mean = 0.0;
+        double miss_dose;
         output.open(std::string(out + ".eff").c_str());
         if (!output.is_open()) {
             throw std::runtime_error(
@@ -131,14 +136,14 @@ public:
                 throw std::runtime_error("Error: Cannot read the bed file!");
             }
             prev_loc = bed_file.tellg();
-            double eff = effect();
+            eff = effect();
             output << eff << std::endl;
             // get_score(score, genotype_byte, eff, standardize);
             lbptr = genotype_byte.data();
-            double maf = snp.maf;
-            double var = 1.0;
-            double mean = 0.0;
-            double miss_dose = maf * 2.0;
+            maf = snp.maf;
+            var = 1.0;
+            mean = 0.0;
+            miss_dose = maf * 2.0;
             if (standardize) {
                 mean = maf * 2;
                 var = (sqrt(2.0 * maf * (1.0 - maf)));
@@ -147,6 +152,8 @@ public:
             ujj = 0;
             // now start calculating the score
             lbptr = genotype_byte.data();
+            // reduce some operation within the loop
+            eff /= var;
             do
             {
                 ulii = ~(*lbptr++);
@@ -158,21 +165,19 @@ public:
                 ujj = 0;
                 while (ulii) {
                     // ujj = CTZLU(ulii) & (BITCT - 2);
-                    if (uii + (ujj / 2) >= m_sample_ct) {
+                    sample_idx = uii + (ujj / 2);
+                    if (sample_idx >= m_sample_ct) {
                         break;
                     }
                     ukk = (ulii >> ujj) & 3;
-                    sample_idx = uii + (ujj / 2);
                     switch (ukk)
                     {
-                    default: score[sample_idx] -= eff * mean / var; break;
-                    case 1:
-                        score[sample_idx] += eff * (ukk - mean) / var;
-                        break;
+                    default: score[sample_idx] -= eff * mean; break;
+                    case 1: score[sample_idx] += eff * (1 - mean); break;
                     case 2:
-                        score[sample_idx] += eff * (miss_dose - mean) / var;
+                        score[sample_idx] += eff * (miss_dose - mean);
                         break;
-                    case 3: score[sample_idx] += eff * (2 - mean) / var; break;
+                    case 3: score[sample_idx] += eff * (2 - mean); break;
                     }
                     ujj += 2;
                 }
@@ -183,7 +188,7 @@ public:
                         num_completed / total_snp * 100);
                 prev_completed = num_completed / total_snp;
             }
-            num_completed++;
+            ++num_completed;
         }
         fprintf(stderr, "\n");
     }

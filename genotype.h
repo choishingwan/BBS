@@ -8,6 +8,7 @@
 #ifndef GENOTYPE_H_
 #define GENOTYPE_H_
 #include "misc.hpp"
+#include "plink_common.hpp"
 #include <algorithm>
 #include <cmath>
 #include <fstream>
@@ -17,23 +18,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#ifdef __LP64__
-#include <emmintrin.h>
-#define ZEROLU 0LLU
-#define ONELU 1LLU
-#define VEC_BYTES 16
-#define BITCT 64
-#else // not __LP64__
-#define ZEROLU 0LU
-#define ONELU 1LU
-#define VEC_BYTES 8
-#define BITCT 32
-#endif // __LP64__
-
-#define BITCT_TO_WORDCT(val) (((val) + (BITCT - 1)) / BITCT)
-#define SET_BIT(idx, arr) ((arr)[(idx) / BITCT] |= ONELU << ((idx) % BITCT))
-#define BITCT2 (BITCT / 2)
-#define CTZLU __builtin_ctzl
 
 struct Sample
 {
@@ -308,149 +292,6 @@ private:
         }
         // mainbuf should contains the information
         return 0;
-    }
-
-
-    void copy_quaterarr_nonempty_subset(
-        const uintptr_t* __restrict raw_quaterarr,
-        const uintptr_t* __restrict subset_mask, uint32_t raw_quaterarr_size,
-        uint32_t subset_size, uintptr_t* __restrict output_quaterarr)
-    {
-        // in plink 2.0, we probably want (0-based) bit raw_quaterarr_size
-        // of subset_mask to be always allocated and unset.  This removes a
-        // few special cases re: iterating past the end of arrays.
-        assert(subset_size);
-        assert(raw_quaterarr_size >= subset_size);
-        uintptr_t cur_output_word = 0;
-        uintptr_t* output_quaterarr_last =
-            &(output_quaterarr[subset_size / BITCT2]);
-        const uint32_t word_write_halfshift_end = subset_size % BITCT2;
-        uint32_t word_write_halfshift = 0;
-        // if < 2/3-filled, use sparse copy algorithm
-        if (subset_size * (3 * ONELU) < raw_quaterarr_size * (2 * ONELU)) {
-            uint32_t subset_mask_widx = 0;
-            while (1) {
-                const uintptr_t cur_include_word =
-                    subset_mask[subset_mask_widx];
-                if (cur_include_word) {
-                    uint32_t wordhalf_idx = 0;
-#ifdef __LP64__
-                    uint32_t cur_include_halfword = (uint32_t) cur_include_word;
-#else
-                    uint32_t cur_include_halfword = (uint16_t) cur_include_word;
-#endif
-                    while (1) {
-                        if (cur_include_halfword) {
-                            uintptr_t raw_quaterarr_word =
-                                raw_quaterarr[subset_mask_widx * 2
-                                              + wordhalf_idx];
-                            do
-                            {
-                                uint32_t rqa_idx_lowbits =
-                                    __builtin_ctz(cur_include_halfword);
-                                cur_output_word |=
-                                    ((raw_quaterarr_word
-                                      >> (rqa_idx_lowbits * 2))
-                                     & 3)
-                                    << (word_write_halfshift * 2);
-                                if (++word_write_halfshift == BITCT2) {
-                                    *output_quaterarr++ = cur_output_word;
-                                    word_write_halfshift = 0;
-                                    cur_output_word = 0;
-                                }
-                                cur_include_halfword &=
-                                    cur_include_halfword - 1;
-                            } while (cur_include_halfword);
-                        }
-                        if (wordhalf_idx) {
-                            break;
-                        }
-                        wordhalf_idx++;
-#ifdef __LP64__
-                        cur_include_halfword = cur_include_word >> 32;
-#else
-                        cur_include_halfword = cur_include_word >> 16;
-#endif
-                    }
-                    if (output_quaterarr == output_quaterarr_last) {
-                        if (word_write_halfshift == word_write_halfshift_end) {
-                            if (word_write_halfshift_end) {
-                                *output_quaterarr_last = cur_output_word;
-                            }
-                            return;
-                        }
-                    }
-                }
-                subset_mask_widx++;
-            }
-        }
-        // blocked copy
-        while (1) {
-            const uintptr_t cur_include_word = *subset_mask++;
-            uint32_t wordhalf_idx = 0;
-#ifdef __LP64__
-            uintptr_t cur_include_halfword = (uint32_t) cur_include_word;
-#else
-            uint32_t cur_include_halfword = (uint16_t) cur_include_word;
-#endif
-            while (1) {
-                uintptr_t raw_quaterarr_word = *raw_quaterarr++;
-                while (cur_include_halfword) {
-                    uint32_t rqa_idx_lowbits = CTZLU(cur_include_halfword);
-                    uintptr_t halfword_invshifted =
-                        (~cur_include_halfword) >> rqa_idx_lowbits;
-                    uintptr_t raw_quaterarr_curblock_unmasked =
-                        raw_quaterarr_word >> (rqa_idx_lowbits * 2);
-                    uint32_t rqa_block_len = CTZLU(halfword_invshifted);
-                    uint32_t block_len_limit = BITCT2 - word_write_halfshift;
-                    cur_output_word |= raw_quaterarr_curblock_unmasked
-                                       << (2 * word_write_halfshift);
-                    if (rqa_block_len < block_len_limit) {
-                        word_write_halfshift += rqa_block_len;
-                        cur_output_word &=
-                            (ONELU << (word_write_halfshift * 2)) - ONELU;
-                    }
-                    else
-                    {
-                        // no need to mask, extra bits vanish off the high
-                        // end
-                        *output_quaterarr++ = cur_output_word;
-                        word_write_halfshift = rqa_block_len - block_len_limit;
-                        if (word_write_halfshift) {
-                            cur_output_word =
-                                (raw_quaterarr_curblock_unmasked
-                                 >> (2 * block_len_limit))
-                                & ((ONELU << (2 * word_write_halfshift))
-                                   - ONELU);
-                        }
-                        else
-                        {
-                            // avoid potential right-shift-64
-                            cur_output_word = 0;
-                        }
-                    }
-                    cur_include_halfword &=
-                        (~(ONELU << (rqa_block_len + rqa_idx_lowbits))) + ONELU;
-                }
-                if (wordhalf_idx) {
-                    break;
-                }
-                wordhalf_idx++;
-#ifdef __LP64__
-                cur_include_halfword = cur_include_word >> 32;
-#else
-                cur_include_halfword = cur_include_word >> 16;
-#endif
-            }
-            if (output_quaterarr == output_quaterarr_last) {
-                if (word_write_halfshift == word_write_halfshift_end) {
-                    if (word_write_halfshift_end) {
-                        *output_quaterarr_last = cur_output_word;
-                    }
-                    return;
-                }
-            }
-        }
     }
 
 

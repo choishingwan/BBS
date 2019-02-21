@@ -190,7 +190,7 @@ public:
             }
             ++num_completed;
         }
-        fprintf(stderr, "\rProcessing 100%%\n");
+        fprintf(stderr, "\rProcessing 100.0%%\n");
     }
     std::string name(size_t i_sample)
     {

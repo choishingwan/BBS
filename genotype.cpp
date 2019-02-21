@@ -207,7 +207,22 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list)
 {
     std::vector<SNP> snp_info;
     std::string line;
+    const uintptr_t unfiltered_sample_ctl =
+        BITCT_TO_WORDCT(m_unfiltered_sample_ct);
+    const uintptr_t final_mask =
+        get_final_mask(static_cast<uint32_t>(m_num_unrelated));
     const uintptr_t unfiltered_sample_ct4 = (m_unfiltered_sample_ct + 3) / 4;
+    const uintptr_t pheno_nm_ctv2 = QUATERCT_TO_ALIGNED_WORDCT(m_num_unrelated);
+    std::vector<uintptr_t> sample_mask(pheno_nm_ctv2);
+    // fill it with the required mask (copy from PLINK2)
+    fill_quatervec_55(static_cast<uint32_t>(m_num_unrelated),
+                      sample_mask.data());
+
+    intptr_t nanal = 0;
+    uint32_t homrar_ct = 0, missing_ct = 0, het_ct = 0, homcom_ct = 0;
+    double cur_maf = 0.0;
+    std::vector<uintptr_t> genotype(unfiltered_sample_ctl * 2, 0);
+    int m_num_maf_filter = 0;
     for (auto prefix : m_genotype_files) {
         std::string bim_name = prefix + ".bim";
         std::string bed_name = prefix + ".bed";
@@ -269,13 +284,37 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list)
                     throw std::runtime_error(error_message);
                 }
             }
+            if (load_and_collapse_incl(
+                    static_cast<uint32_t>(m_unfiltered_sample_ct),
+                    static_cast<uint32_t>(m_num_unrelated),
+                    m_founder_info.data(), final_mask, bed,
+                    m_tmp_genotype.data(), genotype.data()))
+            {
+                std::string error_message =
+                    "Error: Cannot read the bed file(read): " + bed_name;
+                throw std::runtime_error(error_message);
+            }
+            genovec_3freq(genotype.data(), sample_mask.data(), pheno_nm_ctv2,
+                          &missing_ct, &het_ct, &homcom_ct);
+            nanal = static_cast<uint32_t>(m_num_unrelated) - missing_ct;
+            // calculate the hom rare count
+            homrar_ct = static_cast<uint32_t>(nanal) - het_ct - homcom_ct;
+            if (nanal == 0) {
+                // none of the sample contain this SNP
+                // still count as MAF filtering (for now)
+                m_num_maf_filter++;
+                continue;
+            }
+            cur_maf = (static_cast<double>(het_ct + homrar_ct * 2)
+                       / (static_cast<double>(nanal) * 2.0));
             prev_snp_processed = num_snp_read;
             // get the location of the SNP in the binary file
             // this is used in clumping and PRS calculation which
             // allow us to jump directly to the SNP of interest
             // tellg is correct here as we didn't actually read the file
             std::streampos byte_pos = bed.tellg();
-            snp_info.push_back(SNP(std::string(prefix + ".bed"), byte_pos));
+            snp_info.emplace_back(
+                SNP(std::string(prefix + ".bed"), byte_pos, cur_maf));
         }
     }
     return snp_info;

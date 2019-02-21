@@ -31,9 +31,15 @@ class SNP
 public:
     SNP() {}
     SNP(const std::string& f, const std::streampos& b) : file(f), byte_pos(b) {}
-    SNP(const SNP& s) : file(s.file), byte_pos(s.byte_pos) {}
+    SNP(const std::string& f, const std::streampos& b, const double& m)
+        : file(f), byte_pos(b), maf(m)
+    {
+    }
+    SNP(const SNP& s) : file(s.file), byte_pos(s.byte_pos), maf(s.maf) {}
     std::string file;
     std::streampos byte_pos;
+    double maf = 0.0;
+    void set_maf(const double& input_maf) { maf = input_maf; }
     bool operator==(const SNP& s)
     {
         return (file.compare(s.file) == 0) && (byte_pos == s.byte_pos);
@@ -81,8 +87,6 @@ public:
         uint32_t ujj;
         uint32_t ukk;
         uint32_t sample_idx = 0;
-        size_t nmiss = 0;
-        size_t total = 0;
         // do two pass. First pass get the MAF
         uintptr_t* lbptr;
         output.open(std::string(out + ".eff").c_str());
@@ -131,39 +135,7 @@ public:
             output << eff << std::endl;
             // get_score(score, genotype_byte, eff, standardize);
             lbptr = genotype_byte.data();
-            m_tmp_genotype = genotype_byte;
-            do
-            {
-                ulii = ~(*lbptr++);
-                if (uii + BITCT2 > m_unfiltered_sample_ct) {
-                    ulii &=
-                        (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
-                        - ONELU;
-                }
-                while (ulii) {
-                    ujj = CTZLU(ulii) & (BITCT - 2);
-                    ukk = (ulii >> ujj) & 3;
-                    sample_idx = uii + (ujj / 2);
-                    if (!m_sample_names[sample_idx].x_var) {
-                        switch (ukk)
-                        {
-                        case 1: total += 1; break;
-                        case 2: nmiss++; break;
-                        case 3: total += 2; break;
-                        }
-                    }
-                    ulii &= ~((3 * ONELU) << ujj);
-                }
-                uii += BITCT2;
-            } while (uii < m_sample_ct);
-
-
-            if (m_num_unrelated - nmiss == 0) {
-                throw std::runtime_error("ERROR: Genotype missingness of 1!");
-            }
-            double maf = (static_cast<double>(total)
-                          / (static_cast<double>(m_num_unrelated - nmiss)
-                             * 2.0)); // MAF does not count missing
+            double maf = snp.maf;
             double var = 1.0;
             double mean = 0.0;
             double miss_dose = maf * 2.0;
@@ -174,7 +146,7 @@ public:
             uii = 0;
             ujj = 0;
             // now start calculating the score
-            lbptr = m_tmp_genotype.data();
+            lbptr = genotype_byte.data();
             do
             {
                 ulii = ~(*lbptr++);
@@ -272,25 +244,30 @@ private:
                                     uintptr_t* __restrict rawbuf,
                                     uintptr_t* __restrict mainbuf)
     {
-
         assert(unfiltered_sample_ct);
         uint32_t unfiltered_sample_ct4 = (unfiltered_sample_ct + 3) / 4;
+        // if we don't perform selection, we can directly perform the read on
+        // the mainbuf
         if (unfiltered_sample_ct == sample_ct) {
             rawbuf = mainbuf;
         }
+        // we try to read in the data and store it in rawbug
         if (!bedfile.read((char*) rawbuf, unfiltered_sample_ct4)) {
-            return 1;
+            return RET_READ_FAIL;
         }
         if (unfiltered_sample_ct != sample_ct) {
+            // if we need to perform selection, we will remove all unwanted
+            // sample and push the data forward
             copy_quaterarr_nonempty_subset(rawbuf, sample_include,
                                            unfiltered_sample_ct, sample_ct,
                                            mainbuf);
         }
         else
         {
+            // if we dno't need filtering, then we simply mask out the unwanted
+            // region (to avoid the leftover, if any)
             mainbuf[(unfiltered_sample_ct - 1) / BITCT2] &= final_mask;
         }
-        // mainbuf should contains the information
         return 0;
     }
 

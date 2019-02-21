@@ -101,7 +101,7 @@ public:
         fprintf(stderr, "\rProcessing %03.2f%%",
                 num_completed / total_snp * 100);
         for (auto&& snp : m_existed_snps) {
-            if (prev_file.compare(snp.file) != 0) {
+            if (prev_file != snp.file) {
                 if (bed_file.is_open()) {
                     bed_file.close();
                 }
@@ -217,7 +217,7 @@ private:
     size_t m_num_non_founder = 0;
     size_t m_num_unrelated = 0;
     uintptr_t m_founder_ct = 0;
-
+    void get_maf();
     void check_bed(const std::string& bed_name, const size_t num_marker);
     std::vector<SNP>
     gen_snp_vector(const std::unordered_set<std::string>& snp_list);

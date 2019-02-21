@@ -256,7 +256,7 @@ void Genotype::get_maf()
         if (nanal == 0) {
             // none of the sample contain this SNP
             // still count as MAF filtering (for now)
-            fprintf(stderr, "Error: SNP with 100% missingness. Please QC your "
+            fprintf(stderr, "Error: SNP with 100%% missingness. Please QC your "
                             "data first\n");
             exit(-1);
         }

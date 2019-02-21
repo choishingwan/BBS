@@ -163,7 +163,7 @@ public:
                         - ONELU;
                 }
                 ujj = 0;
-                while (ulii) {
+                while (ujj < BITCT) {
                     // ujj = CTZLU(ulii) & (BITCT - 2);
                     sample_idx = uii + (ujj / 2);
                     if (sample_idx >= m_sample_ct) {

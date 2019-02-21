@@ -338,31 +338,6 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list)
                     throw std::runtime_error(error_message);
                 }
             }
-            /*
-            if (load_and_collapse_incl(
-                    static_cast<uint32_t>(m_unfiltered_sample_ct),
-                    static_cast<uint32_t>(m_num_unrelated),
-                    m_founder_info.data(), final_mask, bed,
-                    m_tmp_genotype.data(), genotype.data()))
-            {
-                std::string error_message =
-                    "Error: Cannot read the bed file(read): " + bed_name;
-                throw std::runtime_error(error_message);
-            }
-            genovec_3freq(genotype.data(), sample_mask.data(), pheno_nm_ctv2,
-                          &missing_ct, &het_ct, &homcom_ct);
-            nanal = static_cast<uint32_t>(m_num_unrelated) - missing_ct;
-            // calculate the hom rare count
-            homrar_ct = static_cast<uint32_t>(nanal) - het_ct - homcom_ct;
-            if (nanal == 0) {
-                // none of the sample contain this SNP
-                // still count as MAF filtering (for now)
-                m_num_maf_filter++;
-                continue;
-            }
-            cur_maf = (static_cast<double>(het_ct + homrar_ct * 2)
-                       / (static_cast<double>(nanal) * 2.0));
-                       */
             prev_snp_processed = num_snp_read;
             // get the location of the SNP in the binary file
             // this is used in clumping and PRS calculation which

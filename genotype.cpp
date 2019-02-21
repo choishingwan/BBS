@@ -115,6 +115,7 @@ Genotype::gen_sample_vector(const std::unordered_set<std::string>& sample_list,
                 // so that when we calculate MAF using the founder_info
                 // vector, we will always be fine
                 SET_BIT(sample_index, m_founder_info.data());
+                m_num_unrelated++;
             }
             else
             {

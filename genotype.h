@@ -98,7 +98,6 @@ public:
         uint32_t ukk;
         uint32_t sample_idx = 0;
         size_t nmiss = 0;
-        size_t num_not_xvar = 0;
         size_t total = 0;
         // do two pass. First pass get the MAF
         uintptr_t* lbptr;
@@ -148,6 +147,7 @@ public:
             output << eff << std::endl;
             // get_score(score, genotype_byte, eff, standardize);
             lbptr = genotype_byte.data();
+            m_tmp_genotype = genotype_byte;
             do
             {
                 ulii = ~(*lbptr++);
@@ -156,33 +156,29 @@ public:
                         (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
                         - ONELU;
                 }
-                ujj = 0;
                 while (ulii) {
-                    if (uii + (ujj / 2) >= m_sample_ct) {
-                        break;
-                    }
+                    ujj = CTZLU(ulii) & (BITCT - 2);
                     ukk = (ulii >> ujj) & 3;
                     sample_idx = uii + (ujj / 2);
                     if (!m_sample_names[sample_idx].x_var) {
-                        ++num_not_xvar;
                         switch (ukk)
                         {
-                        default: break;
                         case 1: total += 1; break;
                         case 2: nmiss++; break;
                         case 3: total += 2; break;
                         }
                     }
-                    ujj += 2;
+                    ulii &= ~((3 * ONELU) << ujj);
                 }
                 uii += BITCT2;
             } while (uii < m_sample_ct);
 
-            if (num_not_xvar - nmiss == 0) {
+
+            if (m_num_unrelated - nmiss == 0) {
                 throw std::runtime_error("ERROR: Genotype missingness of 1!");
             }
             double maf = (static_cast<double>(total)
-                          / (static_cast<double>(num_not_xvar - nmiss)
+                          / (static_cast<double>(m_num_unrelated - nmiss)
                              * 2.0)); // MAF does not count missing
             double var = 1.0;
             double mean = 0.0;
@@ -194,7 +190,7 @@ public:
             uii = 0;
             ujj = 0;
             // now start calculating the score
-            lbptr = genotype_byte.data();
+            lbptr = m_tmp_genotype.data();
             do
             {
                 ulii = ~(*lbptr++);
@@ -213,7 +209,7 @@ public:
                     sample_idx = uii + (ujj / 2);
                     switch (ukk)
                     {
-                    default: break;
+                    default: score[sample_idx] -= eff * mean / var; break;
                     case 1:
                         score[sample_idx] += eff * (ukk - mean) / var;
                         break;
@@ -263,6 +259,7 @@ private:
     size_t m_num_female = 0;
     size_t m_num_ambig_sex = 0;
     size_t m_num_non_founder = 0;
+    size_t m_num_unrelated = 0;
     uintptr_t m_founder_ct = 0;
 
     void check_bed(const std::string& bed_name, const size_t num_marker);

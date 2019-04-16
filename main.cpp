@@ -180,6 +180,7 @@ int main(int argc, char* argv[])
     Genotype geno(prefix);
     geno.load_samples(sample_list, no_varx_list);
     geno.load_snps(snp_list, num_snp, seed);
+    // start prepare for score
     std::vector<double> score(geno.sample_size(), 0.0);
     std::normal_distribution<double> norm_dist(0, 1);
     std::chi_squared_distribution<double> chi_dist(1);

@@ -156,7 +156,9 @@ void Genotype::load_snps(const std::unordered_set<std::string>& snp_list,
     // now randomly select SNPs
     std::mt19937 g(seed);
     size_t num_selected_snp = num_selected;
-    if (num_selected_snp > m_existed_snps.size() / 2.0) {
+    if(num_selected_snp == m_existed_snps.size()){
+        // don't bother
+    } else if (num_selected_snp > m_existed_snps.size() / 2.0) {
         // we want more than half of the SNPs
         // so we will sort SNPs to the back at random to speed
         // up the sorting
@@ -200,6 +202,7 @@ void Genotype::load_snps(const std::unordered_set<std::string>& snp_list,
 
     std::cerr << m_existed_snps.size() << " SNPs remaining" << std::endl;
     get_maf();
+    std::cerr << "MAF calculated" << std::endl;
 }
 
 void Genotype::get_maf()

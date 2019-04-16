@@ -289,7 +289,7 @@ void Genotype::get_xbeta(const std::vector<double>& effect,
         }
         cur_maf = (static_cast<double>(het_ct + homrar_ct * 2)
                    / (static_cast<double>(nanal) * 2.0));
-        snp.set_maf(cur_maf);
+        // snp.set_maf(cur_maf);
         if (prev_loc != snp.byte_pos
             && !bed_file.seekg(snp.byte_pos, std::ios_base::beg))
         { throw std::runtime_error("Error: Cannot read the bed file!"); }

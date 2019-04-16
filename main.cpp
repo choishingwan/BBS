@@ -52,21 +52,22 @@ std::unordered_set<std::string> extract_ref(const std::string& extract_name,
                                             const size_t index)
 {
     std::unordered_set<std::string> res;
-    if (extract_name.empty()) {
-        return res;
-    }
+    if (extract_name.empty()) { return res; }
     std::ifstream in;
     in.open(extract_name.c_str());
-    if (!in.is_open()) {
+    if (!in.is_open())
+    {
         throw std::runtime_error(
             std::string("ERROR: Cannot open file: " + extract_name));
     }
     std::string line;
-    while (std::getline(in, line)) {
+    while (std::getline(in, line))
+    {
         misc::trim(line);
         if (line.empty()) continue;
         std::vector<std::string> token = misc::split(line);
-        if (token.size() <= index) {
+        if (token.size() <= index)
+        {
             throw std::runtime_error(
                 std::string("ERROR: Number of column is less than expected!"));
         }
@@ -78,7 +79,8 @@ std::unordered_set<std::string> extract_ref(const std::string& extract_name,
 
 int main(int argc, char* argv[])
 {
-    if (argc <= 1) {
+    if (argc <= 1)
+    {
         usage();
         fprintf(stderr, "Please provide the required parameters\n");
         exit(-1);
@@ -111,7 +113,8 @@ int main(int argc, char* argv[])
     opt = getopt_long(argc, argv, optString, longOpts, &longIndex);
     std::string error_message = "";
     // Start reading all the parameters and perform the qc at the same time
-    while (opt != -1) {
+    while (opt != -1)
+    {
         switch (opt)
         {
         case 'i': prefix = optarg; break;
@@ -140,7 +143,8 @@ int main(int argc, char* argv[])
             try
             {
                 num_snp = misc::convert<size_t>(optarg);
-                if (num_snp == 0) {
+                if (num_snp == 0)
+                {
                     fprintf(stderr, "0 SNPs required, programme terminate\n");
                     exit(0);
                 }
@@ -160,9 +164,11 @@ int main(int argc, char* argv[])
     }
     std::vector<double> heritability;
     std::vector<std::string> token = misc::split(herit, ",");
-    for (auto&& t : token) {
+    for (auto&& t : token)
+    {
         double h = misc::convert<double>(t);
-        if (h<0.0 | h> 1.0) {
+        if (h<0.0 | h> 1.0)
+        {
             std::cerr << "Error: Heritability must be within 0 and 1"
                       << std::endl;
             std::cerr << "       Observed: " << h << std::endl;
@@ -176,38 +182,41 @@ int main(int argc, char* argv[])
     // represents the related pair. Here, we will always exclude
     // sample in the second column from the variance calculation
     std::unordered_set<std::string> no_varx_list = extract_ref(xvar, 1);
-    // Read in the PLINK file information
-    Genotype geno(prefix);
-    geno.load_samples(sample_list, no_varx_list);
-    geno.load_snps(snp_list, num_snp, seed);
-    // start prepare for score
-    std::vector<double> score(geno.sample_size(), 0.0);
+    // generate the effect sizes
+    std::vector<double> effect_size(num_snp, fixed_effect);
     std::normal_distribution<double> norm_dist(0, 1);
     std::chi_squared_distribution<double> chi_dist(1);
     std::exponential_distribution<double> exp_dis(1);
-    std::cerr << "Start generating X Beta" << std::endl;
-    if (use_fixed) {
-        // use fixed effect
-        geno.get_xbeta(score, fixed_effect, standardize);
-    }
-    else
+    std::mt19937 g(seed);
+    switch (effect)
     {
-        switch (effect)
-        {
-        case 0:
-            geno.get_xbeta<std::exponential_distribution<double>>(
-                score, exp_dis, standardize, seed, out);
-            break;
-        case 1:
-            geno.get_xbeta<std::chi_squared_distribution<double>>(
-                score, chi_dist, standardize, seed, out);
-            break;
-        case 2:
-            geno.get_xbeta<std::normal_distribution<double>>(
-                score, norm_dist, standardize, seed, out);
-            break;
-        }
+    case 0:
+    {
+        auto rand = std::bind(exp_dis, g);
+        std::generate(effect_size.begin(), effect_size.end(), rand);
+        break;
     }
+    case 1:
+    {
+        auto rand = std::bind(chi_dist, g);
+        std::generate(effect_size.begin(), effect_size.end(), rand);
+        break;
+    }
+    case 2:
+    {
+        auto rand = std::bind(chi_dist, g);
+        std::generate(effect_size.begin(), effect_size.end(), rand);
+        break;
+    }
+    }
+    // Read in the PLINK file information
+    Genotype geno(prefix);
+    geno.load_samples(sample_list, no_varx_list);
+    // start prepare for score
+    std::vector<double> score(geno.sample_size(), 0.0);
+    // now fill the score vector as we load the scores
+    geno.load_snps(snp_list, effect_size, num_snp, score, seed, standardize);
+
     // here we've got the XB stored in the score items we can then generate the
     // desired phenotypes
 
@@ -215,17 +224,15 @@ int main(int argc, char* argv[])
     std::cerr << "Calculate Variance of X Beta" << std::endl;
     misc::RunningStat rs;
     assert(geno.sample_size() == score.size());
-    for (size_t i = 0; i < score.size(); ++i) {
-        if (!geno.sample_xvar(i)) {
-            rs.push(score[i]);
-        }
+    for (size_t i = 0; i < score.size(); ++i)
+    {
+        if (!geno.sample_xvar(i)) { rs.push(score[i]); }
     }
     double varXB = rs.var();
-    std::mt19937 g(seed);
-
     std::ofstream output;
     output.open(out.c_str());
-    if (!output.is_open()) {
+    if (!output.is_open())
+    {
         std::cerr << "ERROR: Cannot open output file: " << out << std::endl;
         exit(-1);
     }
@@ -236,15 +243,15 @@ int main(int argc, char* argv[])
     misc::vec2d<double> error_values(heritability.size(), geno.sample_size());
     size_t i_h = 0;
     std::cerr << "Generating error term for samples" << std::endl;
-    for (auto&& h : heritability) {
+    for (auto&& h : heritability)
+    {
         std::cerr << "Heritability of " << h << std::endl;
         output << "\th_" << h;
-        if (h == 0.0) {
+        if (h == 0.0)
+        {
             auto rand = std::bind(std::normal_distribution<double>(0, 1), g);
             for (size_t i_sample = 0; i_sample < geno.sample_size(); ++i_sample)
-            {
-                error_values(i_h, i_sample) = rand();
-            }
+            { error_values(i_h, i_sample) = rand(); }
         }
         else
         {
@@ -252,20 +259,18 @@ int main(int argc, char* argv[])
             auto rand = std::bind(
                 std::normal_distribution<double>(0, std::sqrt(error_var)), g);
             for (size_t i_sample = 0; i_sample < geno.sample_size(); ++i_sample)
-            {
-                error_values(i_h, i_sample) = rand();
-            }
+            { error_values(i_h, i_sample) = rand(); }
         }
         i_h++;
     }
     output << std::endl;
     std::cerr << "Generate the phenotype" << std::endl;
-    for (size_t i_sample = 0; i_sample < geno.sample_size(); ++i_sample) {
+    for (size_t i_sample = 0; i_sample < geno.sample_size(); ++i_sample)
+    {
         output << geno.name(i_sample);
         for (i_h = 0; i_h < heritability.size(); ++i_h)
-            if (misc::logically_equal(heritability[i_h], 0.0)) {
-                output << "\t" << error_values(i_h, i_sample);
-            }
+            if (misc::logically_equal(heritability[i_h], 0.0))
+            { output << "\t" << error_values(i_h, i_sample); }
             else
             {
                 output << "\t" << error_values(i_h, i_sample) + score[i_sample];

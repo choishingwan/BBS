@@ -251,6 +251,7 @@ void Genotype::get_maf()
                 "Error: Cannot read the bed file(read): " + prev_file;
             throw std::runtime_error(error_message);
         }
+        prev_loc = bed_file.tellg();
         genovec_3freq(genotype.data(), sample_mask.data(), pheno_nm_ctv2,
                       &missing_ct, &het_ct, &homcom_ct);
         nanal = static_cast<uint32_t>(m_num_unrelated) - missing_ct;

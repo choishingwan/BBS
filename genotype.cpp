@@ -210,7 +210,7 @@ void Genotype::load_snps(const std::unordered_set<std::string>& snp_list,
 
     std::cerr << m_existed_snps.size() << " SNPs remaining" << std::endl;
     get_xbeta(effect, scores, standardize);
-    std::cerr << "MAF calculated" << std::endl;
+    std::cerr << "X Beta calculated" << std::endl;
 }
 
 void Genotype::get_xbeta(const std::vector<double>& effect,

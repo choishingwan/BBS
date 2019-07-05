@@ -69,16 +69,10 @@ public:
     void load_snps(const std::unordered_set<std::string>& snp_list,
                    const size_t num_selected, const size_t seed);
     size_t sample_size() const { return m_sample_ct; }
-    void get_xbeta(std::vector<double>& score, double fixed_effect,
-                   bool standardize);
     std::vector<SNP> gen_snp_vector(const std::unordered_set<std::string> &snp_list, const size_t num_selected, const size_t seed);
-    template <typename T>
-    void get_xbeta(std::vector<double>& score, T rand, const bool standardize,
-                   const size_t seed, const std::string& out)
+    void get_xbeta(std::vector<double>& score, std::vector<double>& effect, const bool standardize,const std::string& out)
     {
         assert(score.size() == m_sample_ct);
-        std::mt19937 g(seed);
-        auto effect = std::bind(rand, g);
         const uintptr_t final_mask =
             get_final_mask(static_cast<uint32_t>(m_sample_ct));
         // this is use for initialize the array sizes
@@ -124,6 +118,7 @@ public:
         fprintf(stderr, "\rProcessing %03.2f%%",
                 num_completed / total_snp * 100);
         // loop through the SNPs. Use PLINK's founder MAF calculation script
+        size_t idx = 0;
         for (auto&& snp : m_existed_snps) {
             if (prev_file != snp.file) {
                 if (bed_file.is_open()) {
@@ -171,7 +166,7 @@ public:
             prev_loc =
                 static_cast<std::streampos>(unfiltered_sample_ct4) + snp.byte_pos;
 
-            eff = effect();
+            eff = effect[idx];
             output << snp.name << "\t" << eff << std::endl;
             // get_score(score, genotype_byte, eff, standardize);
             lbptr = genotype_byte.data();
@@ -234,6 +229,7 @@ public:
                 prev_completed = num_completed / total_snp;
             }
             ++num_completed;
+            idx++;
         }
         fprintf(stderr, "\rProcessing 100.0%%\n");
     }

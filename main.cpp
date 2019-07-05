@@ -75,6 +75,14 @@ std::unordered_set<std::string> extract_ref(const std::string& extract_name,
     in.close();
     return res;
 }
+template <typename T>
+std::vector<double> generate_data(size_t size, T rand, std::mt19937 g)
+{
+    auto effect = std::bind(rand, g);
+    std::vector<double> data(size);
+    std::generate(data.begin(), data.end(), [&effect]() { return effect(); });
+    return data;
+}
 
 int main(int argc, char* argv[])
 {
@@ -186,28 +194,31 @@ int main(int argc, char* argv[])
     std::chi_squared_distribution<double> chi_dist(1);
     std::exponential_distribution<double> exp_dis(1);
     std::cerr << "Start generating X Beta" << std::endl;
+    std::mt19937 g(seed);
+    std::vector<double> effect_sizes;
     if (use_fixed) {
         // use fixed effect
-        geno.get_xbeta(score, fixed_effect, standardize);
+        effect_sizes.resize(num_snp);
+        std::fill(effect_sizes.begin(), effect_sizes.end(), fixed_effect);
     }
     else
     {
         switch (effect)
         {
         case 0:
-            geno.get_xbeta<std::exponential_distribution<double>>(
-                score, exp_dis, standardize, seed, out);
+            effect_sizes = generate_data<std::exponential_distribution<double>>(num_snp,
+                                                                                exp_dis, g);
             break;
         case 1:
-            geno.get_xbeta<std::chi_squared_distribution<double>>(
-                score, chi_dist, standardize, seed, out);
+            effect_sizes =
+                    generate_data<std::chi_squared_distribution<double>>(num_snp, chi_dist, g);
             break;
         case 2:
-            geno.get_xbeta<std::normal_distribution<double>>(
-                score, norm_dist, standardize, seed, out);
+            effect_sizes = generate_data<std::normal_distribution<double>>(num_snp, norm_dist, g);
             break;
         }
     }
+    geno.get_xbeta(score, effect_sizes, standardize, out);
     // here we've got the XB stored in the score items we can then generate the
     // desired phenotypes
 
@@ -221,7 +232,6 @@ int main(int argc, char* argv[])
         }
     }
     double varXB = rs.var();
-    std::mt19937 g(seed);
 
     std::ofstream output;
     output.open(out.c_str());

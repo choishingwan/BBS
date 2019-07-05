@@ -158,6 +158,7 @@ int main(int argc, char* argv[])
         }
         opt = getopt_long(argc, argv, optString, longOpts, &longIndex);
     }
+    std::cerr << "Seed: " << seed << std::endl;
     std::vector<double> heritability;
     std::vector<std::string> token = misc::split(herit, ",");
     for (auto&& t : token) {

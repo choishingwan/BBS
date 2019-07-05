@@ -31,15 +31,14 @@ class SNP
 public:
     SNP() {}
     SNP(const std::string& f, const std::streampos& b) : file(f), byte_pos(b) {}
+    SNP(const std::string& f, const std::string &in, const std::streampos& b)
+        : file(f), name(in), byte_pos(b) {}
     SNP(const std::string& f, const std::streampos& b, const double& m)
-        : file(f), byte_pos(b), maf(m)
-    {
-    }
-    SNP(const SNP& s) : file(s.file), byte_pos(s.byte_pos), maf(s.maf) {}
-    std::string file;
-    std::streampos byte_pos;
-    double maf = 0.0;
+        : file(f), byte_pos(b), maf(m){}
+    SNP(const std::string& f, const std::string &in, const size_t i):file(f), name(in), byte_pos(i){}
+    SNP(const SNP& s) : file(s.file), name(s.name), byte_pos(s.byte_pos), maf(s.maf) {}
     void set_maf(const double& input_maf) { maf = input_maf; }
+    void set_pos(const std::streampos& b ) {byte_pos = b;}
     bool operator==(const SNP& s)
     {
         return (file.compare(s.file) == 0) && (byte_pos == s.byte_pos);
@@ -49,6 +48,14 @@ public:
     {
         return !((file.compare(s.file) == 0) && (byte_pos == s.byte_pos));
     }
+    void set_name(const std::string &in_name){ name=in_name;}
+    std::string get_name() const { return name;}
+
+
+    std::string file;
+    std::string name;
+    std::streampos byte_pos;
+    double maf = 0.0;
 };
 
 class Genotype
@@ -64,7 +71,7 @@ public:
     size_t sample_size() const { return m_sample_ct; }
     void get_xbeta(std::vector<double>& score, double fixed_effect,
                    bool standardize);
-
+    std::vector<SNP> gen_snp_vector(const std::unordered_set<std::string> &snp_list, const size_t num_selected, const size_t seed);
     template <typename T>
     void get_xbeta(std::vector<double>& score, T rand, const bool standardize,
                    const size_t seed, const std::string& out)
@@ -130,7 +137,7 @@ public:
 
             if (load_and_collapse_incl(m_unfiltered_sample_ct, m_sample_ct,
                                        m_sample_include.data(), final_mask,
-                                       bed_file, m_tmp_genotype.data(),
+                                       false, bed_file, m_tmp_genotype.data(),
                                        genotype_byte.data()))
             {
                 throw std::runtime_error("Error: Cannot read the bed file!");
@@ -224,8 +231,6 @@ private:
     uintptr_t m_founder_ct = 0;
     void get_maf();
     void check_bed(const std::string& bed_name, const size_t num_marker);
-    std::vector<SNP>
-    gen_snp_vector(const std::unordered_set<std::string>& snp_list);
     inline uintptr_t get_final_mask(uint32_t sample_ct)
     {
         uint32_t uii = sample_ct % BITCT2;
@@ -244,7 +249,7 @@ private:
     uint32_t load_and_collapse_incl(uint32_t unfiltered_sample_ct,
                                     uint32_t sample_ct,
                                     const uintptr_t* __restrict sample_include,
-                                    uintptr_t final_mask,
+                                    uintptr_t final_mask, uint32_t do_reverse,
                                     std::ifstream& bedfile,
                                     uintptr_t* __restrict rawbuf,
                                     uintptr_t* __restrict mainbuf)
@@ -272,6 +277,10 @@ private:
             // if we dno't need filtering, then we simply mask out the unwanted
             // region (to avoid the leftover, if any)
             mainbuf[(unfiltered_sample_ct - 1) / BITCT2] &= final_mask;
+        }
+        if (do_reverse) {
+            // this will never be callsed in PRSice
+            reverse_loadbuf(sample_ct, (unsigned char*) mainbuf);
         }
         return 0;
     }

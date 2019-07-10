@@ -258,10 +258,11 @@ void Genotype::get_maf()
             if (bed_file.is_open()) {
                 bed_file.close();
             }
-            bed_file.open(snp.file.c_str(), std::ios::binary);
+            std::string cur_file = snp.file+".bed";
+            bed_file.open(cur_file.c_str(), std::ios::binary);
             if (!bed_file.is_open()) {
                 std::string error_message =
-                    "Error: Cannot open bed file: " + snp.file;
+                    "Error: Cannot open bed file: " + cur_file;
                 throw std::runtime_error(error_message);
             }
             prev_file = snp.file;

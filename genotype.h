@@ -86,9 +86,9 @@ public:
         std::vector<uintptr_t> sample_include2(unfiltered_sample_ctv2);
         std::vector<uintptr_t>  founder_include2(unfiltered_sample_ctv2);
         // fill it with the required mask (copy from PLINK2)
-        init_quaterarr_from_bitarr(sample_include2.data(), m_unfiltered_sample_ct,
+        init_quaterarr_from_bitarr(m_sample_include.data(), m_unfiltered_sample_ct,
                                    sample_include2.data());
-        init_quaterarr_from_bitarr(founder_include2.data(), m_unfiltered_sample_ct,
+        init_quaterarr_from_bitarr(m_founder_info.data(), m_unfiltered_sample_ct,
                                    founder_include2.data());
         std::string prev_file = "";
         std::streampos prev_loc = 0;

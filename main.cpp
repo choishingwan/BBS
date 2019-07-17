@@ -180,6 +180,7 @@ int main(int argc, char* argv[])
         heritability.push_back(h);
     }
     std::unordered_set<std::string> snp_list = extract_ref(extract, 0);
+    std::cerr << "Keeping " << snp_list.size() << " SNPs" << std::endl;
     std::unordered_set<std::string> sample_list = extract_ref(keep, 1);
     // relatedness file should contain two column, ID1 and ID2, which
     // represents the related pair. Here, we will always exclude

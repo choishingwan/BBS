@@ -185,7 +185,7 @@ std::vector<SNP> Genotype::gen_snp_vector(
         check_bed(bed_name, num_snp_read);
     }
 //   now we know what SNPs we have, we can do the SNP selection
-
+    std::cerr << snp_in_bim.size() << " SNPs in bim file" << std::endl;
     std::mt19937 g(seed);
     size_t num_selected_snp = num_selected;
     if(num_selected_snp >= snp_in_bim.size()){
@@ -205,8 +205,8 @@ std::vector<SNP> Genotype::gen_snp_vector(
             }
         }
     }
-    if(num_selected_snp < snp_in_bim.size()){
-        snp_in_bim.resize(num_selected_snp);
+    if(num_selected < snp_in_bim.size()){
+        snp_in_bim.resize(num_selected);
         sort(snp_in_bim.begin(), snp_in_bim.end(),[](const SNP &i1, const SNP &i2) {
             if(i1.file == i2.file){
                 if(i1.byte_pos==i2.byte_pos) return i1.name < i2.name;
@@ -230,7 +230,6 @@ void Genotype::load_snps(const std::unordered_set<std::string>& snp_list,
 {
     // do multi-pass analysis, read in the bim file and get the number of SNPs
     m_existed_snps = gen_snp_vector(snp_list, num_selected, seed);
-    std::cerr << "Read in " << m_existed_snps.size() << " SNPs" << std::endl;
     std::cerr << m_existed_snps.size() << " SNPs remaining" << std::endl;
     get_maf();
 }

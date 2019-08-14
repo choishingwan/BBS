@@ -286,10 +286,12 @@ int main(int argc, char* argv[])
         i_h++;
     }
     output << std::endl;
+    out_xb << std::endl;
     std::cerr << "Generate the phenotype" << std::endl;
     for (size_t i_sample = 0; i_sample < geno.sample_size(); ++i_sample)
     {
         output << geno.name(i_sample);
+        out_xb << geno.name(i_sample);
         for (i_h = 0; i_h < heritability.size(); ++i_h)
             if (misc::logically_equal(heritability[i_h], 0.0))
             {

@@ -52,21 +52,22 @@ std::unordered_set<std::string> extract_ref(const std::string& extract_name,
                                             const size_t index)
 {
     std::unordered_set<std::string> res;
-    if (extract_name.empty()) {
-        return res;
-    }
+    if (extract_name.empty()) { return res; }
     std::ifstream in;
     in.open(extract_name.c_str());
-    if (!in.is_open()) {
+    if (!in.is_open())
+    {
         throw std::runtime_error(
             std::string("ERROR: Cannot open file: " + extract_name));
     }
     std::string line;
-    while (std::getline(in, line)) {
+    while (std::getline(in, line))
+    {
         misc::trim(line);
         if (line.empty()) continue;
         std::vector<std::string> token = misc::split(line);
-        if (token.size() <= index) {
+        if (token.size() <= index)
+        {
             throw std::runtime_error(
                 std::string("ERROR: Number of column is less than expected!"));
         }
@@ -86,7 +87,8 @@ std::vector<double> generate_data(size_t size, T rand, std::mt19937 g)
 
 int main(int argc, char* argv[])
 {
-    if (argc <= 1) {
+    if (argc <= 1)
+    {
         usage();
         fprintf(stderr, "Please provide the required parameters\n");
         exit(-1);
@@ -119,7 +121,8 @@ int main(int argc, char* argv[])
     opt = getopt_long(argc, argv, optString, longOpts, &longIndex);
     std::string error_message = "";
     // Start reading all the parameters and perform the qc at the same time
-    while (opt != -1) {
+    while (opt != -1)
+    {
         switch (opt)
         {
         case 'i': prefix = optarg; break;
@@ -148,7 +151,8 @@ int main(int argc, char* argv[])
             try
             {
                 num_snp = misc::convert<size_t>(optarg);
-                if (num_snp == 0) {
+                if (num_snp == 0)
+                {
                     fprintf(stderr, "0 SNPs required, programme terminate\n");
                     exit(0);
                 }
@@ -169,9 +173,11 @@ int main(int argc, char* argv[])
     std::cerr << "Seed: " << seed << std::endl;
     std::vector<double> heritability;
     std::vector<std::string> token = misc::split(herit, ",");
-    for (auto&& t : token) {
+    for (auto&& t : token)
+    {
         double h = misc::convert<double>(t);
-        if (h<0.0 | h> 1.0) {
+        if (h<0.0 | h> 1.0)
+        {
             std::cerr << "Error: Heritability must be within 0 and 1"
                       << std::endl;
             std::cerr << "       Observed: " << h << std::endl;
@@ -197,7 +203,8 @@ int main(int argc, char* argv[])
     std::cerr << "Start generating X Beta" << std::endl;
     std::mt19937 g(seed);
     std::vector<double> effect_sizes;
-    if (use_fixed) {
+    if (use_fixed)
+    {
         // use fixed effect
         effect_sizes.resize(num_snp);
         std::fill(effect_sizes.begin(), effect_sizes.end(), fixed_effect);
@@ -207,15 +214,16 @@ int main(int argc, char* argv[])
         switch (effect)
         {
         case 0:
-            effect_sizes = generate_data<std::exponential_distribution<double>>(num_snp,
-                                                                                exp_dis, g);
+            effect_sizes = generate_data<std::exponential_distribution<double>>(
+                num_snp, exp_dis, g);
             break;
         case 1:
-            effect_sizes =
-                    generate_data<std::chi_squared_distribution<double>>(num_snp, chi_dist, g);
+            effect_sizes = generate_data<std::chi_squared_distribution<double>>(
+                num_snp, chi_dist, g);
             break;
         case 2:
-            effect_sizes = generate_data<std::normal_distribution<double>>(num_snp, norm_dist, g);
+            effect_sizes = generate_data<std::normal_distribution<double>>(
+                num_snp, norm_dist, g);
             break;
         }
     }
@@ -227,35 +235,45 @@ int main(int argc, char* argv[])
     std::cerr << "Calculate Variance of X Beta" << std::endl;
     misc::RunningStat rs;
     assert(geno.sample_size() == score.size());
-    for (size_t i = 0; i < score.size(); ++i) {
-        if (!geno.sample_xvar(i)) {
-            rs.push(score[i]);
-        }
+    for (size_t i = 0; i < score.size(); ++i)
+    {
+        if (!geno.sample_xvar(i)) { rs.push(score[i]); }
     }
     double varXB = rs.var();
 
     std::ofstream output;
+    std::ofstream out_xb;
     output.open(out.c_str());
-    if (!output.is_open()) {
+    out_xb.open(std::string(out + ".xbeta").c_str());
+    if (!output.is_open())
+    {
         std::cerr << "ERROR: Cannot open output file: " << out << std::endl;
+        exit(-1);
+    }
+    if (!out_xb.is_open())
+    {
+        std::cerr << "ERROR: Cannot open output file: " << out << ".xbeta"
+                  << std::endl;
         exit(-1);
     }
 
     std::vector<std::function<void()>> rand_dist;
 
     output << "FID\tIID";
+    out_xb << "FID\tIID";
     misc::vec2d<double> error_values(heritability.size(), geno.sample_size());
     size_t i_h = 0;
     std::cerr << "Generating error term for samples" << std::endl;
-    for (auto&& h : heritability) {
+    for (auto&& h : heritability)
+    {
         std::cerr << "Heritability of " << h << std::endl;
         output << "\th_" << h;
-        if (h == 0.0) {
+        out_xb << "\th_" << h;
+        if (h == 0.0)
+        {
             auto rand = std::bind(std::normal_distribution<double>(0, 1), g);
             for (size_t i_sample = 0; i_sample < geno.sample_size(); ++i_sample)
-            {
-                error_values(i_h, i_sample) = rand();
-            }
+            { error_values(i_h, i_sample) = rand(); }
         }
         else
         {
@@ -263,25 +281,29 @@ int main(int argc, char* argv[])
             auto rand = std::bind(
                 std::normal_distribution<double>(0, std::sqrt(error_var)), g);
             for (size_t i_sample = 0; i_sample < geno.sample_size(); ++i_sample)
-            {
-                error_values(i_h, i_sample) = rand();
-            }
+            { error_values(i_h, i_sample) = rand(); }
         }
         i_h++;
     }
     output << std::endl;
     std::cerr << "Generate the phenotype" << std::endl;
-    for (size_t i_sample = 0; i_sample < geno.sample_size(); ++i_sample) {
+    for (size_t i_sample = 0; i_sample < geno.sample_size(); ++i_sample)
+    {
         output << geno.name(i_sample);
         for (i_h = 0; i_h < heritability.size(); ++i_h)
-            if (misc::logically_equal(heritability[i_h], 0.0)) {
+            if (misc::logically_equal(heritability[i_h], 0.0))
+            {
                 output << "\t" << error_values(i_h, i_sample);
+                out_xb << "\t0";
             }
             else
             {
                 output << "\t" << error_values(i_h, i_sample) + score[i_sample];
+                out_xb << "\t" << score[i_sample];
             }
         output << std::endl;
+        out_xb << std::endl;
     }
     output.close();
+    out_xb.close();
 }

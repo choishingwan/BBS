@@ -76,6 +76,14 @@ std::unordered_set<std::string> extract_ref(const std::string& extract_name,
     in.close();
     return res;
 }
+template <typename T>
+std::vector<double> generate_data(size_t size, T rand, std::mt19937 g)
+{
+    auto effect = std::bind(rand, g);
+    std::vector<double> data(size);
+    std::generate(data.begin(), data.end(), [&effect]() { return effect(); });
+    return data;
+}
 
 int main(int argc, char* argv[])
 {
@@ -162,6 +170,7 @@ int main(int argc, char* argv[])
         }
         opt = getopt_long(argc, argv, optString, longOpts, &longIndex);
     }
+    std::cerr << "Seed: " << seed << std::endl;
     std::vector<double> heritability;
     std::vector<std::string> token = misc::split(herit, ",");
     for (auto&& t : token)
@@ -177,6 +186,7 @@ int main(int argc, char* argv[])
         heritability.push_back(h);
     }
     std::unordered_set<std::string> snp_list = extract_ref(extract, 0);
+    std::cerr << "Keeping " << snp_list.size() << " SNPs" << std::endl;
     std::unordered_set<std::string> sample_list = extract_ref(keep, 1);
     // relatedness file should contain two column, ID1 and ID2, which
     // represents the related pair. Here, we will always exclude
@@ -187,36 +197,32 @@ int main(int argc, char* argv[])
     std::normal_distribution<double> norm_dist(0, 1);
     std::chi_squared_distribution<double> chi_dist(1);
     std::exponential_distribution<double> exp_dis(1);
+    std::cerr << "Start generating X Beta" << std::endl;
     std::mt19937 g(seed);
-    switch (effect)
-    {
-    case 0:
-    {
-        auto rand = std::bind(exp_dis, g);
-        std::generate(effect_size.begin(), effect_size.end(), rand);
-        break;
+    std::vector<double> effect_sizes;
+    if (use_fixed) {
+        // use fixed effect
+        effect_sizes.resize(num_snp);
+        std::fill(effect_sizes.begin(), effect_sizes.end(), fixed_effect);
     }
     case 1:
     {
-        auto rand = std::bind(chi_dist, g);
-        std::generate(effect_size.begin(), effect_size.end(), rand);
-        break;
+        switch (effect)
+        {
+        case 0:
+            effect_sizes = generate_data<std::exponential_distribution<double>>(num_snp,
+                                                                                exp_dis, g);
+            break;
+        case 1:
+            effect_sizes =
+                    generate_data<std::chi_squared_distribution<double>>(num_snp, chi_dist, g);
+            break;
+        case 2:
+            effect_sizes = generate_data<std::normal_distribution<double>>(num_snp, norm_dist, g);
+            break;
+        }
     }
-    case 2:
-    {
-        auto rand = std::bind(chi_dist, g);
-        std::generate(effect_size.begin(), effect_size.end(), rand);
-        break;
-    }
-    }
-    // Read in the PLINK file information
-    Genotype geno(prefix);
-    geno.load_samples(sample_list, no_varx_list);
-    // start prepare for score
-    std::vector<double> score(geno.sample_size(), 0.0);
-    // now fill the score vector as we load the scores
-    geno.load_snps(snp_list, effect_size, num_snp, score, seed, standardize);
-
+    geno.get_xbeta(score, effect_sizes, standardize, out);
     // here we've got the XB stored in the score items we can then generate the
     // desired phenotypes
 
@@ -229,6 +235,7 @@ int main(int argc, char* argv[])
         if (!geno.sample_xvar(i)) { rs.push(score[i]); }
     }
     double varXB = rs.var();
+
     std::ofstream output;
     output.open(out.c_str());
     if (!output.is_open())

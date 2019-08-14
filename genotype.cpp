@@ -100,13 +100,12 @@ Genotype::gen_sample_vector(const std::unordered_set<std::string>& sample_list,
 
     uintptr_t sample_index = 0; // this is just for error message
     bool inclusion = false;
-    while (std::getline(famfile, line))
-    {
+    std::vector<std::string> token;
+    while (std::getline(famfile, line)) {
         misc::trim(line);
         if (line.empty()) continue;
-        std::vector<std::string> token = misc::split(line);
-        if (token.size() < 6)
-        {
+        token = misc::split(line);
+        if (token.size() < 6) {
             std::string error_message =
                 "Error: Malformed fam file. Less than 6 column on line: "
                 + std::to_string(sample_index + 1);
@@ -154,60 +153,87 @@ Genotype::gen_sample_vector(const std::unordered_set<std::string>& sample_list,
     return sample_name;
 }
 
-void Genotype::load_snps(const std::unordered_set<std::string>& snp_list,
-                         const std::vector<double>& effect,
-                         const size_t num_selected, std::vector<double>& scores,
-                         const size_t seed, const bool standardize)
-{
-    m_existed_snps = gen_snp_vector(snp_list);
-    std::cerr << "Read in " << m_existed_snps.size() << " SNPs" << std::endl;
-    // now randomly select SNPs
+std::vector<SNP> Genotype::gen_snp_vector(
+        const std::unordered_set<std::string>& snp_list,
+        const size_t num_selected,
+        const size_t seed){
+    std::string line, bim_name, bed_name;
+    std::vector<SNP> snp_in_bim;
+    std::vector<std::string> bim_info;
+    for (auto prefix : m_genotype_files) {
+        bim_name = prefix+".bim";
+        bed_name = prefix+".bed";
+        std::ifstream bim(bim_name.c_str());
+        if (!bim.is_open()) {
+            std::string error_message =
+                "Error: Cannot open bim file: " + bim_name;
+            throw std::runtime_error(error_message);
+        }
+        size_t num_snp_read = 0;
+        std::string prev_chr = "";
+        while (std::getline(bim, line)) {
+            misc::trim(line);
+            if (line.empty()) continue;
+            bim_info= misc::split(line);
+            if (bim_info.size() < 6) {
+                std::string error_message =
+                    "Error: Malformed bim file. Less than 6 column on "
+                    "line: "
+                    + std::to_string(num_snp_read) + "\n";
+                throw std::runtime_error(error_message);
+            }
+            num_snp_read++;
+            if(snp_list.empty() || snp_list.find(bim_info[1])==snp_list.end())
+                snp_in_bim.emplace_back(SNP(prefix, bim_info[1], num_snp_read));
+        }
+        check_bed(bed_name, num_snp_read);
+    }
+//   now we know what SNPs we have, we can do the SNP selection
+    std::cerr << snp_in_bim.size() << " SNPs in bim file" << std::endl;
     std::mt19937 g(seed);
     size_t num_selected_snp = num_selected;
-    if (num_selected_snp == m_existed_snps.size())
-    {
-        // don't bother
-    }
-    else if (num_selected_snp > m_existed_snps.size() / 2.0)
-    {
-        // we want more than half of the SNPs
-        // so we will sort SNPs to the back at random to speed
-        // up the sorting
-        size_t num_exclude_snp = m_existed_snps.size() - num_selected_snp;
-        std::vector<SNP>::reverse_iterator iter = m_existed_snps.rbegin();
-        size_t index = m_existed_snps.size() - 1;
-        for (; iter != m_existed_snps.rend();
-             ++iter, index--, --num_exclude_snp)
-        {
-            std::uniform_int_distribution<int> dist(0, index);
-            const size_t random_index = static_cast<size_t>(dist(g));
-            if (*iter != m_existed_snps.at(random_index))
-            { std::swap(m_existed_snps.at(random_index), *iter); }
-        }
-    }
-    else
-    {
-        size_t index = 0;
-        for (auto iter = m_existed_snps.begin();
-             (iter != m_existed_snps.end()) && (num_selected_snp > 0);
+    if(num_selected_snp >= snp_in_bim.size()){
+        // do nothing
+    }else if(num_selected_snp < snp_in_bim.size()){
+        // shuffle
+        size_t index =0;
+        for (auto iter = snp_in_bim.begin();
+             (iter != snp_in_bim.end()) && (num_selected_snp > 0);
              ++iter, index++, --num_selected_snp)
         {
             std::uniform_int_distribution<int> dist(index,
-                                                    m_existed_snps.size() - 1);
+                                                    snp_in_bim.size() - 1);
             const size_t random_index = static_cast<size_t>(dist(g));
-            if (*iter != m_existed_snps.at(random_index))
-            { std::swap(m_existed_snps.at(random_index), *iter); }
+            if (*iter != snp_in_bim.at(random_index)) {
+                std::swap(snp_in_bim.at(random_index), *iter);
+            }
         }
     }
-    m_existed_snps.resize(num_selected);
-    std::sort(m_existed_snps.begin(), m_existed_snps.end(),
-              [](const SNP i1, const SNP i2) {
-                  if (i1.file.compare(i2.file) == 0)
-                  { return i1.byte_pos < i2.byte_pos; }
-                  else
-                      return i1.file.compare(i2.file) < 0;
-              });
+    if(num_selected < snp_in_bim.size()){
+        snp_in_bim.resize(num_selected);
+        sort(snp_in_bim.begin(), snp_in_bim.end(),[](const SNP &i1, const SNP &i2) {
+            if(i1.file == i2.file){
+                if(i1.byte_pos==i2.byte_pos) return i1.name < i2.name;
+                else return i1.byte_pos < i2.byte_pos;
+            }else return i1.file < i2.file;
+        }
+            );
+    }
 
+    const uintptr_t unfiltered_sample_ct4 = (m_unfiltered_sample_ct + 3) / 4;
+    for(size_t i = 0; i < snp_in_bim.size(); ++i){
+        std::streampos byte_pos = m_bed_offset
+                + ((static_cast<size_t>(snp_in_bim[i].byte_pos) - 1)
+                   * (static_cast<uint64_t>(unfiltered_sample_ct4)));
+        snp_in_bim[i].set_pos(byte_pos);
+    }
+    return snp_in_bim;
+}
+void Genotype::load_snps(const std::unordered_set<std::string>& snp_list,
+                         const size_t num_selected, const size_t seed)
+{
+    // do multi-pass analysis, read in the bim file and get the number of SNPs
+    m_existed_snps = gen_snp_vector(snp_list, num_selected, seed);
     std::cerr << m_existed_snps.size() << " SNPs remaining" << std::endl;
     get_xbeta(effect, scores, standardize);
     std::cerr << "X Beta calculated" << std::endl;
@@ -243,19 +269,16 @@ void Genotype::get_xbeta(const std::vector<double>& effect,
     uint32_t homrar_ct = 0, missing_ct = 0, het_ct = 0, homcom_ct = 0;
     double cur_maf = 0.0;
     std::streampos prev_loc = 0;
-    size_t snp_idx = 0;
-    double prev_completed = 0;
-    double total_snp = static_cast<double>(m_existed_snps.size());
-    for (auto&& snp : m_existed_snps)
-    {
-        if (prev_file != snp.file)
-        {
-            if (bed_file.is_open()) { bed_file.close(); }
-            bed_file.open(snp.file.c_str(), std::ios::binary);
-            if (!bed_file.is_open())
-            {
+    for (auto&& snp : m_existed_snps) {
+        if (prev_file != snp.file) {
+            if (bed_file.is_open()) {
+                bed_file.close();
+            }
+            std::string cur_file = snp.file+".bed";
+            bed_file.open(cur_file.c_str(), std::ios::binary);
+            if (!bed_file.is_open()) {
                 std::string error_message =
-                    "Error: Cannot open bed file: " + snp.file;
+                    "Error: Cannot open bed file: " + cur_file;
                 throw std::runtime_error(error_message);
             }
             prev_file = snp.file;
@@ -263,12 +286,14 @@ void Genotype::get_xbeta(const std::vector<double>& effect,
         }
         if (prev_loc != snp.byte_pos
             && !bed_file.seekg(snp.byte_pos, std::ios_base::beg))
-        { throw std::runtime_error("Error: Cannot read the bed file!"); }
-        // first, get MAF
+        {
+            throw std::runtime_error("Error: Cannot read the bed file!");
+        }
+
         if (load_and_collapse_incl(
                 static_cast<uint32_t>(m_unfiltered_sample_ct),
                 static_cast<uint32_t>(m_num_unrelated), m_founder_info.data(),
-                final_mask, bed_file, m_tmp_genotype.data(), genotype.data()))
+                final_mask, false, bed_file, m_tmp_genotype.data(), genotype.data()))
         {
             std::string error_message =
                 "Error: Cannot read the bed file(read): " + prev_file;
@@ -279,14 +304,15 @@ void Genotype::get_xbeta(const std::vector<double>& effect,
         nanal = static_cast<uint32_t>(m_num_unrelated) - missing_ct;
         // calculate the hom rare count
         homrar_ct = static_cast<uint32_t>(nanal) - het_ct - homcom_ct;
-        if (nanal == 0)
-        {
+
+        if (nanal == 0) {
             // none of the sample contain this SNP
             // still count as MAF filtering (for now)
             fprintf(stderr, "Error: SNP with 100%% missingness. Please QC your "
                             "data first\n");
             exit(-1);
         }
+
         cur_maf = (static_cast<double>(het_ct + homrar_ct * 2)
                    / (static_cast<double>(nanal) * 2.0));
         // snp.set_maf(cur_maf);
@@ -352,96 +378,6 @@ void Genotype::get_xbeta(const std::vector<double>& effect,
     fprintf(stderr, "\rProcessing 100.0%%\n");
 }
 
-std::vector<SNP>
-Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list)
-{
-    std::vector<SNP> snp_info;
-    std::string line;
-    const uintptr_t unfiltered_sample_ct4 = (m_unfiltered_sample_ct + 3) / 4;
-
-    // intptr_t nanal = 0;
-    // uint32_t homrar_ct = 0, missing_ct = 0, het_ct = 0, homcom_ct = 0;
-    // double cur_maf = 0.0;
-    // int m_num_maf_filter = 0;
-    for (auto prefix : m_genotype_files)
-    {
-        std::string bim_name = prefix + ".bim";
-        std::string bed_name = prefix + ".bed";
-        std::ifstream bim(bim_name.c_str());
-        if (!bim.is_open())
-        {
-            std::string error_message =
-                "Error: Cannot open bim file: " + bim_name;
-            throw std::runtime_error(error_message);
-        }
-        int num_snp_read = 0;
-        std::string prev_chr = "";
-        while (std::getline(bim, line))
-        {
-            misc::trim(line);
-            if (line.empty()) continue;
-            std::vector<std::string> bim_info = misc::split(line);
-            if (bim_info.size() < 6)
-            {
-                std::string error_message =
-                    "Error: Malformed bim file. Less than 6 column on "
-                    "line: "
-                    + std::to_string(num_snp_read) + "\n";
-                throw std::runtime_error(error_message);
-            }
-            num_snp_read++;
-        }
-        bim.clear();
-        bim.seekg(0, bim.beg);
-        // check if the bed file is valid
-        check_bed(bed_name, num_snp_read);
-
-        std::ifstream bed(bed_name.c_str());
-        if (!bed.is_open())
-        {
-            std::string error_message =
-                "Error: Cannot open bed file: " + bed_name;
-            throw std::runtime_error(error_message);
-        }
-        bed.seekg(m_bed_offset, std::ios_base::beg);
-        // now go through the bim & bed file and perform filtering
-        num_snp_read = -1;
-        int prev_snp_processed = -2;
-
-        bool no_extraction = snp_list.empty();
-        while (std::getline(bim, line))
-        {
-            misc::trim(line);
-            if (line.empty()) continue;
-            ++num_snp_read;
-            std::vector<std::string> bim_info = misc::split(line);
-            if (!no_extraction && snp_list.find(bim_info[1]) == snp_list.end())
-                continue;
-            if (num_snp_read - prev_snp_processed > 1)
-            {
-                // skip unread lines
-                if (!bed.seekg(m_bed_offset
-                                   + ((num_snp_read - 1)
-                                      * (static_cast<uint64_t>(
-                                          unfiltered_sample_ct4))),
-                               std::ios_base::beg))
-                {
-                    std::string error_message =
-                        "Error: Cannot read the bed file(seek): " + bed_name;
-                    throw std::runtime_error(error_message);
-                }
-            }
-            prev_snp_processed = num_snp_read;
-            // get the location of the SNP in the binary file
-            // this is used in clumping and PRS calculation which
-            // allow us to jump directly to the SNP of interest
-            // tellg is correct here as we didn't actually read the file
-            std::streampos byte_pos = bed.tellg();
-            snp_info.emplace_back(SNP(std::string(prefix + ".bed"), byte_pos));
-        }
-    }
-    return snp_info;
-}
 
 void Genotype::check_bed(const std::string& bed_name, const size_t num_marker)
 {

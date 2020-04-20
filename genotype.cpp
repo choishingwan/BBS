@@ -159,6 +159,7 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list,
     std::string line, bim_name, bed_name;
     std::vector<SNP> snp_in_bim;
     std::vector<std::string> bim_info;
+    const uintptr_t unfiltered_sample_ct4 = (m_unfiltered_sample_ct + 3) / 4;
     for (auto prefix : m_genotype_files)
     {
         bim_name = prefix + ".bim";
@@ -171,6 +172,16 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list,
             throw std::runtime_error(error_message);
         }
         size_t num_snp_read = 0;
+        size_t num_snp = 0;
+        while (std::getline(bim, line))
+        {
+            misc::trim(line);
+            if (line.empty()) continue;
+            ++num_snp;
+        }
+        check_bed(bed_name, num_snp_read);
+        bim.clear();
+        bim.seekg(0, bim.beg);
         std::string prev_chr = "";
         while (std::getline(bim, line))
         {
@@ -185,12 +196,18 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list,
                     + std::to_string(num_snp_read) + "\n";
                 throw std::runtime_error(error_message);
             }
-            num_snp_read++;
             if (snp_list.empty()
-                || snp_list.find(bim_info[1]) == snp_list.end())
-                snp_in_bim.emplace_back(SNP(prefix, bim_info[1], num_snp_read));
+                || snp_list.find(bim_info[2]) != snp_list.end())
+            {
+
+                std::streampos byte_pos =
+                    m_bed_offset
+                    + (num_snp_read
+                       * (static_cast<uint64_t>(unfiltered_sample_ct4)));
+                snp_in_bim.emplace_back(SNP(prefix, bim_info[2], byte_pos));
+            }
+            ++num_snp_read;
         }
-        check_bed(bed_name, num_snp_read);
     }
     //   now we know what SNPs we have, we can do the SNP selection
     std::cerr << snp_in_bim.size() << " SNPs in bim file" << std::endl;
@@ -230,16 +247,6 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list,
                  else
                      return i1.file < i2.file;
              });
-    }
-
-    const uintptr_t unfiltered_sample_ct4 = (m_unfiltered_sample_ct + 3) / 4;
-    for (size_t i = 0; i < snp_in_bim.size(); ++i)
-    {
-        std::streampos byte_pos =
-            m_bed_offset
-            + ((static_cast<size_t>(snp_in_bim[i].byte_pos) - 1)
-               * (static_cast<uint64_t>(unfiltered_sample_ct4)));
-        snp_in_bim[i].set_pos(byte_pos);
     }
     return snp_in_bim;
 }

@@ -15,6 +15,9 @@ if ( ZLIB_FOUND )
     target_link_libraries( ${PROJECT_NAME} ${ZLIB_LIBRARIES} )
     target_link_libraries( bbs_lib ${ZLIB_LIBRARIES} )
 endif( ZLIB_FOUND )
+find_package (Threads REQUIRED)
+
 target_compile_features(bbs_lib PRIVATE cxx_range_for)
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_range_for)
-target_link_libraries(${PROJECT_NAME} bbs_lib)
+target_link_libraries(${PROJECT_NAME} bbs_lib
+    ${CMAKE_THREAD_LIBS_INIT})

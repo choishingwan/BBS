@@ -179,7 +179,7 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list,
             if (line.empty()) continue;
             ++num_snp;
         }
-        check_bed(bed_name, num_snp_read);
+        check_bed(bed_name, num_snp);
         bim.clear();
         bim.seekg(0, bim.beg);
         std::string prev_chr = "";
@@ -197,14 +197,14 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list,
                 throw std::runtime_error(error_message);
             }
             if (snp_list.empty()
-                || snp_list.find(bim_info[2]) != snp_list.end())
+                || snp_list.find(bim_info[1]) != snp_list.end())
             {
 
                 std::streampos byte_pos =
                     m_bed_offset
                     + (num_snp_read
                        * (static_cast<uint64_t>(unfiltered_sample_ct4)));
-                snp_in_bim.emplace_back(SNP(prefix, bim_info[2], byte_pos));
+                snp_in_bim.emplace_back(SNP(prefix, bim_info[1], byte_pos));
             }
             ++num_snp_read;
         }

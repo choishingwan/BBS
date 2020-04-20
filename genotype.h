@@ -31,14 +31,24 @@ class SNP
 public:
     SNP() {}
     SNP(const std::string& f, const std::streampos& b) : file(f), byte_pos(b) {}
-    SNP(const std::string& f, const std::string &in, const std::streampos& b)
-        : file(f), name(in), byte_pos(b) {}
+    SNP(const std::string& f, const std::string& in, const std::streampos& b)
+        : file(f), name(in), byte_pos(b)
+    {
+    }
     SNP(const std::string& f, const std::streampos& b, const double& m)
-        : file(f), byte_pos(b), maf(m){}
-    SNP(const std::string& f, const std::string &in, const size_t i):file(f), name(in), byte_pos(i){}
-    SNP(const SNP& s) : file(s.file), name(s.name), byte_pos(s.byte_pos), maf(s.maf) {}
+        : file(f), byte_pos(b), maf(m)
+    {
+    }
+    SNP(const std::string& f, const std::string& in, const size_t i)
+        : file(f), name(in), byte_pos(i)
+    {
+    }
+    SNP(const SNP& s)
+        : file(s.file), name(s.name), byte_pos(s.byte_pos), maf(s.maf)
+    {
+    }
     void set_maf(const double& input_maf) { maf = input_maf; }
-    void set_pos(const std::streampos& b ) {byte_pos = b;}
+    void set_pos(const std::streampos& b) { byte_pos = b; }
     bool operator==(const SNP& s)
     {
         return (file.compare(s.file) == 0) && (byte_pos == s.byte_pos);
@@ -48,8 +58,8 @@ public:
     {
         return !((file.compare(s.file) == 0) && (byte_pos == s.byte_pos));
     }
-    void set_name(const std::string &in_name){ name=in_name;}
-    std::string get_name() const { return name;}
+    void set_name(const std::string& in_name) { name = in_name; }
+    std::string get_name() const { return name; }
 
 
     std::string file;
@@ -69,8 +79,11 @@ public:
     void load_snps(const std::unordered_set<std::string>& snp_list,
                    const size_t num_selected, const size_t seed);
     size_t sample_size() const { return m_sample_ct; }
-    std::vector<SNP> gen_snp_vector(const std::unordered_set<std::string> &snp_list, const size_t num_selected, const size_t seed);
-    void get_xbeta(std::vector<double>& score, std::vector<double>& effect, const bool standardize,const std::string& out)
+    std::vector<SNP>
+    gen_snp_vector(const std::unordered_set<std::string>& snp_list,
+                   const size_t num_selected, const size_t seed);
+    void get_xbeta(std::vector<double>& score, std::vector<double>& effect,
+                   const bool standardize, const std::string& out)
     {
         assert(score.size() == m_sample_ct);
         const uintptr_t final_mask =
@@ -78,17 +91,20 @@ public:
         // this is use for initialize the array sizes
         const uintptr_t unfiltered_sample_ctl =
             BITCT_TO_WORDCT(m_unfiltered_sample_ct);
-        const uintptr_t unfiltered_sample_ct4 = (m_unfiltered_sample_ct + 3) / 4;
+        const uintptr_t unfiltered_sample_ct4 =
+            (m_unfiltered_sample_ct + 3) / 4;
         const uintptr_t unfiltered_sample_ctv2 = 2 * unfiltered_sample_ctl;
 
         std::ifstream bed_file;
         std::vector<uintptr_t> genotype_byte(unfiltered_sample_ctl * 2, 0);
         std::vector<uintptr_t> sample_include2(unfiltered_sample_ctv2);
-        std::vector<uintptr_t>  founder_include2(unfiltered_sample_ctv2);
+        std::vector<uintptr_t> founder_include2(unfiltered_sample_ctv2);
         // fill it with the required mask (copy from PLINK2)
-        init_quaterarr_from_bitarr(m_sample_include.data(), m_unfiltered_sample_ct,
+        init_quaterarr_from_bitarr(m_sample_include.data(),
+                                   m_unfiltered_sample_ct,
                                    sample_include2.data());
-        init_quaterarr_from_bitarr(m_founder_info.data(), m_unfiltered_sample_ct,
+        init_quaterarr_from_bitarr(m_founder_info.data(),
+                                   m_unfiltered_sample_ct,
                                    founder_include2.data());
         std::string prev_file = "";
         std::streampos prev_loc = 0;
@@ -107,7 +123,8 @@ public:
         uint32_t ll_ct, lh_ct, hh_ct;
         uint32_t ll_ctf, lh_ctf, hh_ctf;
         output.open(std::string(out + ".eff").c_str());
-        if (!output.is_open()) {
+        if (!output.is_open())
+        {
             throw std::runtime_error(
                 std::string("ERROR: Cannot open file: " + out + ".eff"));
         }
@@ -119,14 +136,15 @@ public:
                 num_completed / total_snp * 100);
         // loop through the SNPs. Use PLINK's founder MAF calculation script
         size_t idx = 0;
-        for (auto&& snp : m_existed_snps) {
-            if (prev_file != snp.file) {
-                if (bed_file.is_open()) {
-                    bed_file.close();
-                }
-                std::string cur_file = snp.file+".bed";
+        for (auto&& snp : m_existed_snps)
+        {
+            if (prev_file != snp.file)
+            {
+                if (bed_file.is_open()) { bed_file.close(); }
+                std::string cur_file = snp.file + ".bed";
                 bed_file.open(cur_file.c_str(), std::ios::binary);
-                if (!bed_file.is_open()) {
+                if (!bed_file.is_open())
+                {
                     std::string error_message =
                         "Error: Cannot open bed file: " + cur_file;
                     throw std::runtime_error(error_message);
@@ -137,22 +155,23 @@ public:
 
             if (prev_loc != snp.byte_pos
                 && !bed_file.seekg(snp.byte_pos, std::ios_base::beg))
-            {
-                throw std::runtime_error("Error: Cannot read the bed file!");
-            }
+            { throw std::runtime_error("Error: Cannot read the bed file!"); }
 
             // loadbuf_raw is the temporary
-            if (load_raw(unfiltered_sample_ct4, bed_file, m_tmp_genotype.data())) {
+            if (load_raw(unfiltered_sample_ct4, bed_file,
+                         m_tmp_genotype.data()))
+            {
                 std::string error_message =
                     "Error: Cannot read the bed file(read): " + prev_file;
                 throw std::runtime_error(error_message);
             }
             single_marker_freqs_and_hwe(
                 unfiltered_sample_ctv2, m_tmp_genotype.data(),
-                sample_include2.data(), founder_include2.data(),
-                m_sample_ct, &ll_ct, &lh_ct, &hh_ct, m_founder_ct, &ll_ctf,
-                &lh_ctf, &hh_ctf);
-            if (m_unfiltered_sample_ct != m_sample_ct) {
+                sample_include2.data(), founder_include2.data(), m_sample_ct,
+                &ll_ct, &lh_ct, &hh_ct, m_founder_ct, &ll_ctf, &lh_ctf,
+                &hh_ctf);
+            if (m_unfiltered_sample_ct != m_sample_ct)
+            {
                 copy_quaterarr_nonempty_subset(
                     m_tmp_genotype.data(), m_sample_include.data(),
                     static_cast<uint32_t>(m_unfiltered_sample_ct),
@@ -161,21 +180,24 @@ public:
             else
             {
                 genotype_byte = m_tmp_genotype;
-                genotype_byte[(m_unfiltered_sample_ct - 1) / BITCT2] &= final_mask;
+                genotype_byte[(m_unfiltered_sample_ct - 1) / BITCT2] &=
+                    final_mask;
             }
 
-            prev_loc =
-                static_cast<std::streampos>(unfiltered_sample_ct4) + snp.byte_pos;
+            prev_loc = static_cast<std::streampos>(unfiltered_sample_ct4)
+                       + snp.byte_pos;
 
             eff = effect[idx];
             output << snp.name << "\t" << eff << std::endl;
             // get_score(score, genotype_byte, eff, standardize);
             lbptr = genotype_byte.data();
-            maf = (ll_ctf*0.0+lh_ctf+hh_ctf*2.0)/(ll_ctf+lh_ctf+hh_ctf);
+            maf = (ll_ctf * 0.0 + lh_ctf + hh_ctf * 2.0)
+                  / (ll_ctf + lh_ctf + hh_ctf);
             var = 1.0;
             mean = 0.0;
             miss_dose = maf * 2.0;
-            if (standardize) {
+            if (standardize)
+            {
                 mean = maf * 2.0;
                 var = (sqrt(2.0 * maf * (1.0 - maf)));
             }
@@ -186,45 +208,46 @@ public:
             eff /= var;
             do
             {
-                // ulii contain the numeric representation of the current genotype
+                // ulii contain the numeric representation of the current
+                // genotype
                 ulii = ~(*lbptr++);
-                if (uii + BITCT2 > m_unfiltered_sample_ct) {
+                if (uii + BITCT2 > m_unfiltered_sample_ct)
+                {
                     // this is PLINK, not sure exactly what this is about
-                    ulii &= (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
-                            - ONELU;
+                    ulii &=
+                        (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
+                        - ONELU;
                 }
                 // ujj sample index of the current genotype block
                 ujj = 0;
-                while (ujj < BITCT) {
+                while (ujj < BITCT)
+                {
                     // go through the whole genotype block
                     // ukk is the current genotype
                     sample_idx = uii + (ujj / 2);
-                    if (sample_idx >= m_sample_ct) {
-                        break;
-                    }
+                    if (sample_idx >= m_sample_ct) { break; }
                     ukk = (ulii >> ujj) & 3;
                     // now we will get all genotypes (0, 1, 2, 3)
                     switch (ukk)
                     {
-                    default:
-                        score[sample_idx]+=eff*(0-mean); break;
-                    case 1:
-                        score[sample_idx]+=eff*(1-mean); break;
-                    case 3:
-                        score[sample_idx]+=eff*(2-mean); break;
+                    default: score[sample_idx] += eff * (0 - mean); break;
+                    case 1: score[sample_idx] += eff * (1 - mean); break;
+                    case 3: score[sample_idx] += eff * (2 - mean); break;
                     case 2:
-                        score[sample_idx]+=eff*(miss_dose-mean); break;
+                        score[sample_idx] += eff * (miss_dose - mean);
+                        break;
                     }
 
                     // ulii &= ~((3 * ONELU) << ujj);
-                    // as each sample is represented by two byte, we will add 2 to
-                    // the index
+                    // as each sample is represented by two byte, we will add 2
+                    // to the index
                     ujj += 2;
                 }
                 // uii is the number of samples we have finished so far
                 uii += BITCT2;
             } while (uii < m_sample_ct);
-            if (num_completed / total_snp - prev_completed > 0.01) {
+            if (num_completed / total_snp - prev_completed > 0.01)
+            {
                 fprintf(stderr, "\rProcessing %03.2f%%",
                         num_completed / total_snp * 100);
                 prev_completed = num_completed / total_snp;
@@ -269,9 +292,7 @@ private:
     inline uintptr_t get_final_mask(uint32_t sample_ct)
     {
         uint32_t uii = sample_ct % BITCT2;
-        if (uii) {
-            return (ONELU << (2 * uii)) - ONELU;
-        }
+        if (uii) { return (ONELU << (2 * uii)) - ONELU; }
         else
         {
             return ~ZEROLU;
@@ -293,14 +314,12 @@ private:
         uint32_t unfiltered_sample_ct4 = (unfiltered_sample_ct + 3) / 4;
         // if we don't perform selection, we can directly perform the read on
         // the mainbuf
-        if (unfiltered_sample_ct == sample_ct) {
-            rawbuf = mainbuf;
-        }
+        if (unfiltered_sample_ct == sample_ct) { rawbuf = mainbuf; }
         // we try to read in the data and store it in rawbug
-        if (!bedfile.read((char*) rawbuf, unfiltered_sample_ct4)) {
-            return RET_READ_FAIL;
-        }
-        if (unfiltered_sample_ct != sample_ct) {
+        if (!bedfile.read((char*) rawbuf, unfiltered_sample_ct4))
+        { return RET_READ_FAIL; }
+        if (unfiltered_sample_ct != sample_ct)
+        {
             // if we need to perform selection, we will remove all unwanted
             // sample and push the data forward
             copy_quaterarr_nonempty_subset(rawbuf, sample_include,
@@ -313,7 +332,8 @@ private:
             // region (to avoid the leftover, if any)
             mainbuf[(unfiltered_sample_ct - 1) / BITCT2] &= final_mask;
         }
-        if (do_reverse) {
+        if (do_reverse)
+        {
             // this will never be callsed in PRSice
             reverse_loadbuf(sample_ct, (unsigned char*) mainbuf);
         }
@@ -325,9 +345,7 @@ private:
                    std::vector<uintptr_t>& geno_byte, const double effect,
                    const bool standardize)
     {
-        if (score.size() == 0) {
-            return;
-        }
+        if (score.size() == 0) { return; }
         uint32_t uii = 0;
         uintptr_t ulii = 0;
         uint32_t ujj;
@@ -342,18 +360,19 @@ private:
         do
         {
             ulii = ~(*lbptr++);
-            if (uii + BITCT2 > m_unfiltered_sample_ct) {
+            if (uii + BITCT2 > m_unfiltered_sample_ct)
+            {
                 ulii &= (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
                         - ONELU;
             }
             ujj = 0;
-            while (ulii) {
-                if (uii + (ujj / 2) >= m_sample_ct) {
-                    break;
-                }
+            while (ulii)
+            {
+                if (uii + (ujj / 2) >= m_sample_ct) { break; }
                 ukk = (ulii >> ujj) & 3;
                 sample_idx = uii + (ujj / 2);
-                if (!m_sample_names[sample_idx].x_var) {
+                if (!m_sample_names[sample_idx].x_var)
+                {
                     ++num_not_xvar;
                     switch (ukk)
                     {
@@ -368,16 +387,16 @@ private:
             uii += BITCT2;
         } while (uii < m_sample_ct);
 
-        if (num_not_xvar - nmiss == 0) {
-            throw std::runtime_error("ERROR: Genotype missingness of 1!");
-        }
+        if (num_not_xvar - nmiss == 0)
+        { throw std::runtime_error("ERROR: Genotype missingness of 1!"); }
         double maf = (static_cast<double>(total)
                       / (static_cast<double>(num_not_xvar - nmiss)
                          * 2.0)); // MAF does not count missing
         double var = 1.0;
         double mean = 0.0;
         double miss_dose = maf * 2.0;
-        if (standardize) {
+        if (standardize)
+        {
             mean = maf * 2;
             var = (sqrt(2.0 * maf * (1.0 - maf)));
         }
@@ -388,16 +407,16 @@ private:
         do
         {
             ulii = ~(*lbptr++);
-            if (uii + BITCT2 > m_unfiltered_sample_ct) {
+            if (uii + BITCT2 > m_unfiltered_sample_ct)
+            {
                 ulii &= (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
                         - ONELU;
             }
             ujj = 0;
-            while (ulii) {
+            while (ulii)
+            {
                 // ujj = CTZLU(ulii) & (BITCT - 2);
-                if (uii + (ujj / 2) >= m_sample_ct) {
-                    break;
-                }
+                if (uii + (ujj / 2) >= m_sample_ct) { break; }
                 ukk = (ulii >> ujj) & 3;
                 sample_idx = uii + (ujj / 2);
                 switch (ukk)
@@ -422,9 +441,8 @@ private:
         // 2. explicit iteration from 0..(unfiltered_sample_ct-1).
         // otherwise improper trailing bits might cause a segfault, when we
         // should be ignoring them or just issuing a warning.
-        if (!bedfile.read((char*) rawbuf, unfiltered_sample_ct4)) {
-            return RET_READ_FAIL;
-        }
+        if (!bedfile.read((char*) rawbuf, unfiltered_sample_ct4))
+        { return RET_READ_FAIL; }
         return 0;
     }
 
@@ -453,7 +471,8 @@ private:
         uintptr_t cur_decr = 120;
         uintptr_t* lptr_12x_end;
         unfiltered_sample_ctl2 -= unfiltered_sample_ctl2 % 12;
-        while (unfiltered_sample_ctl2 >= 120) {
+        while (unfiltered_sample_ctl2 >= 120)
+        {
         single_marker_freqs_and_hwe_loop:
             lptr_12x_end = &(lptr[cur_decr]);
             count_3freq_1920b((__m128i*) lptr, (__m128i*) lptr_12x_end,
@@ -467,14 +486,16 @@ private:
             founder_include2 = &(founder_include2[cur_decr]);
             unfiltered_sample_ctl2 -= cur_decr;
         }
-        if (unfiltered_sample_ctl2) {
+        if (unfiltered_sample_ctl2)
+        {
             cur_decr = unfiltered_sample_ctl2;
             goto single_marker_freqs_and_hwe_loop;
         }
 #else
         uintptr_t* lptr_twelve_end =
             &(lptr[unfiltered_sample_ctl2 - unfiltered_sample_ctl2 % 12]);
-        while (lptr < lptr_twelve_end) {
+        while (lptr < lptr_twelve_end)
+        {
             count_3freq_48b(lptr, sample_include2, &tot_a, &tot_b, &tot_c);
             count_3freq_48b(lptr, founder_include2, &tot_a_f, &tot_b_f,
                             &tot_c_f);
@@ -483,7 +504,8 @@ private:
             founder_include2 = &(founder_include2[12]);
         }
 #endif
-        while (lptr < lptr_end) {
+        while (lptr < lptr_end)
+        {
             loader = *lptr++;
             loader2 = *sample_include2++;
             loader3 = (loader >> 1) & loader2;

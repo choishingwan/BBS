@@ -17,6 +17,7 @@
 #pragma once
 
 #include <assert.h>
+#include <fstream>
 #include <stdexcept>
 #include <stdio.h>
 #define _USE_MATH_DEFINES

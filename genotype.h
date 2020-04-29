@@ -114,9 +114,8 @@ public:
         double maf;
         double var = 1.0;
         double mean = 0.0;
-        double miss_dose;
         uint32_t ll_ct, lh_ct, hh_ct;
-        uint32_t ll_ctf, lh_ctf, hh_ctf;
+        uint32_t ref_founder_ct, het_founder_ct, alt_founder_ct;
         output.open(std::string(out + ".eff").c_str());
         if (!output.is_open())
         {
@@ -140,9 +139,8 @@ public:
                 bed_file.open(cur_file.c_str(), std::ios::binary);
                 if (!bed_file.is_open())
                 {
-                    std::string error_message =
-                        "Error: Cannot open bed file: " + cur_file;
-                    throw std::runtime_error(error_message);
+                    throw std::runtime_error("Error: Cannot open bed file: "
+                                             + cur_file);
                 }
                 prev_file = snp.file;
                 prev_loc = 0;
@@ -156,15 +154,15 @@ public:
             if (load_raw(unfiltered_sample_ct4, bed_file,
                          m_tmp_genotype.data()))
             {
-                std::string error_message =
-                    "Error: Cannot read the bed file(read): " + prev_file;
-                throw std::runtime_error(error_message);
+                throw std::runtime_error(
+                    "Error: Cannot read the bed file(read): " + prev_file);
             }
             single_marker_freqs_and_hwe(
                 unfiltered_sample_ctv2, m_tmp_genotype.data(),
                 sample_include2.data(), founder_include2.data(), m_sample_ct,
-                &ll_ct, &lh_ct, &hh_ct, m_founder_ct, &ll_ctf, &lh_ctf,
-                &hh_ctf);
+                &ll_ct, &lh_ct, &hh_ct, m_founder_ct, &ref_founder_ct,
+                &het_founder_ct, &alt_founder_ct);
+            // got the maf, now transform genotype to the require format for PRS
             if (m_unfiltered_sample_ct != m_sample_ct)
             {
                 copy_quaterarr_nonempty_subset(
@@ -185,15 +183,14 @@ public:
             eff = effect[idx];
             output << snp.name << "\t" << eff << std::endl;
             // get_score(score, genotype_byte, eff, standardize);
-            lbptr = genotype_byte.data();
-            maf = (ll_ctf * 0.0 + lh_ctf + hh_ctf * 2.0)
-                  / (ll_ctf + lh_ctf + hh_ctf);
+            maf = (het_founder_ct + alt_founder_ct * 2.0)
+                  / (2.0 * (ref_founder_ct + het_founder_ct + alt_founder_ct));
             var = 1.0;
             mean = 0.0;
-            miss_dose = maf * 2.0;
+            double miss_dose = 2.0 * maf;
             if (standardize)
             {
-                mean = maf * 2.0;
+                mean = miss_dose;
                 var = (sqrt(2.0 * maf * (1.0 - maf)));
             }
             uii = 0;
@@ -225,9 +222,9 @@ public:
                     // now we will get all genotypes (0, 1, 2, 3)
                     switch (ukk)
                     {
-                    default: score[sample_idx] += eff * (0 - mean); break;
-                    case 1: score[sample_idx] += eff * (1 - mean); break;
-                    case 3: score[sample_idx] += eff * (2 - mean); break;
+                    default: score[sample_idx] -= eff * mean; break;
+                    case 1: score[sample_idx] += eff * (1.0 - mean); break;
+                    case 3: score[sample_idx] += eff * (2.0 - mean); break;
                     case 2:
                         score[sample_idx] += eff * (miss_dose - mean);
                         break;
@@ -241,6 +238,7 @@ public:
                 // uii is the number of samples we have finished so far
                 uii += BITCT2;
             } while (uii < m_sample_ct);
+
             if (num_completed / total_snp - prev_completed > 0.01)
             {
                 fprintf(stderr, "\rProcessing %03.2f%%",
@@ -336,98 +334,6 @@ private:
     }
 
 
-    void get_score(std::vector<double>& score,
-                   std::vector<uintptr_t>& geno_byte, const double effect,
-                   const bool standardize)
-    {
-        if (score.size() == 0) { return; }
-        uint32_t uii = 0;
-        uintptr_t ulii = 0;
-        uint32_t ujj;
-        uint32_t ukk;
-        uint32_t sample_idx = 0;
-        size_t nmiss = 0;
-        size_t num_not_xvar = 0;
-        size_t total = 0;
-        // do two pass. First pass get the MAF
-
-        uintptr_t* lbptr = geno_byte.data();
-        do
-        {
-            ulii = ~(*lbptr++);
-            if (uii + BITCT2 > m_unfiltered_sample_ct)
-            {
-                ulii &= (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
-                        - ONELU;
-            }
-            ujj = 0;
-            while (ulii)
-            {
-                if (uii + (ujj / 2) >= m_sample_ct) { break; }
-                ukk = (ulii >> ujj) & 3;
-                sample_idx = uii + (ujj / 2);
-                if (!m_sample_names[sample_idx].x_var)
-                {
-                    ++num_not_xvar;
-                    switch (ukk)
-                    {
-                    default: break;
-                    case 1: total += 1; break;
-                    case 2: nmiss++; break;
-                    case 3: total += 2; break;
-                    }
-                }
-                ujj += 2;
-            }
-            uii += BITCT2;
-        } while (uii < m_sample_ct);
-
-        if (num_not_xvar - nmiss == 0)
-        { throw std::runtime_error("ERROR: Genotype missingness of 1!"); }
-        double maf = (static_cast<double>(total)
-                      / (static_cast<double>(num_not_xvar - nmiss)
-                         * 2.0)); // MAF does not count missing
-        double var = 1.0;
-        double mean = 0.0;
-        double miss_dose = maf * 2.0;
-        if (standardize)
-        {
-            mean = maf * 2;
-            var = (sqrt(2.0 * maf * (1.0 - maf)));
-        }
-        // now start calculating the score
-        lbptr = geno_byte.data();
-        uii = 0;
-        ujj = 0;
-        do
-        {
-            ulii = ~(*lbptr++);
-            if (uii + BITCT2 > m_unfiltered_sample_ct)
-            {
-                ulii &= (ONELU << ((m_unfiltered_sample_ct & (BITCT2 - 1)) * 2))
-                        - ONELU;
-            }
-            ujj = 0;
-            while (ulii)
-            {
-                // ujj = CTZLU(ulii) & (BITCT - 2);
-                if (uii + (ujj / 2) >= m_sample_ct) { break; }
-                ukk = (ulii >> ujj) & 3;
-                sample_idx = uii + (ujj / 2);
-                switch (ukk)
-                {
-                default: break;
-                case 1: score[sample_idx] += effect * (ukk - mean) / var; break;
-                case 2:
-                    score[sample_idx] += effect * (miss_dose - mean) / var;
-                    break;
-                case 3: score[sample_idx] += effect * (2 - mean) / var; break;
-                }
-                ujj += 2;
-            }
-            uii += BITCT2;
-        } while (uii < m_sample_ct);
-    }
     inline uint32_t load_raw(uintptr_t unfiltered_sample_ct4,
                              std::ifstream& bedfile, uintptr_t* rawbuf)
     {

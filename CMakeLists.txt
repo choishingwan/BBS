@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 2.8)
 
 project(BBS)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Don't use e.g. GNU extension (like -std=gnu++11) for portability
+set(CMAKE_CXX_EXTENSIONS OFF)
 option(march "Use --march." OFF)
 set(CMAKE_CXX_FLAGS "-Wall -march=native")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")

@@ -1,5 +1,5 @@
-// This file is part of PRSice2.0, copyright (C) 2016-2017
-// Shing Wan Choi, Jack Euesden, Cathryn M. Lewis, Paul F. O’Reilly
+// This file is part of PRSice-2, copyright (C) 2016-2019
+// Shing Wan Choi, Paul F. O’Reilly
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -14,8 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef misc_hpp
-#define misc_hpp
+#pragma once
 
 #include <assert.h>
 #include <stdexcept>
@@ -26,11 +25,12 @@
 #include <iostream>
 #include <limits>
 #include <math.h>
+#include <memory>
 #include <random>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
-
 #if defined __APPLE__
 #include <mach/mach.h>
 #include <mach/mach_host.h>
@@ -51,7 +51,47 @@
 #include <sys/types.h>
 #include <unistd.h>
 #endif
+#if defined(_WIN32)
+#include <windows.h>
 
+#include <psapi.h>
+
+#elif defined(__unix__) || defined(__unix) || defined(unix) \
+    || (defined(__APPLE__) && defined(__MACH__))
+#include <sys/resource.h>
+#include <unistd.h>
+
+#if defined(__APPLE__) && defined(__MACH__)
+#include <mach/mach.h>
+
+#elif (defined(_AIX) || defined(__TOS__AIX__)) \
+    || (defined(__sun__) || defined(__sun)     \
+        || defined(sun) && (defined(__SVR4) || defined(__svr4__)))
+#include <fcntl.h>
+#include <procfs.h>
+
+#elif defined(__linux__) || defined(__linux) || defined(linux) \
+    || defined(__gnu_linux__)
+#include <stdio.h>
+
+#endif
+
+#else
+#error "Cannot define getPeakRSS( ) or getCurrentRSS( ) for an unknown OS."
+#endif
+#if defined(_WIN32)
+#elif defined(__unix__) || defined(__unix) || defined(unix) \
+    || (defined(__APPLE__) && defined(__MACH__))
+#include <sys/param.h>
+#include <sys/types.h>
+#include <unistd.h>
+#if defined(BSD)
+#include <sys/sysctl.h>
+#endif
+
+#else
+#error "Unable to define getMemorySize( ) for an unknown OS."
+#endif
 #define BIGSTACK_MIN_MB 64
 #define BIGSTACK_DEFAULT_MB 2048
 
@@ -67,22 +107,20 @@ public:
     vec2d() {}
     vec2d(size_t row, size_t col, T def)
     {
-        if (row == 0 || col == 0) {
-            throw std::invalid_argument("Dimension of 2d vector must be >0");
-        }
+        if (row == 0 || col == 0)
+        { throw std::invalid_argument("Dimension of 2d vector must be >0"); }
         m_storage.resize(row * col, def);
         m_row = row;
         m_col = col;
-    };
+    }
     vec2d(size_t row, size_t col)
     {
-        if (row == 0 || col == 0) {
-            throw std::invalid_argument("Dimension of 2d vector must be >0");
-        }
+        if (row == 0 || col == 0)
+        { throw std::invalid_argument("Dimension of 2d vector must be >0"); }
         m_storage.resize(row * col);
         m_row = row;
         m_col = col;
-    };
+    }
     T operator()(size_t row, size_t col) const
     {
         if (row > m_row || col > m_col)
@@ -96,8 +134,8 @@ public:
         return m_storage[row * m_col + col];
     }
     void clear() { m_storage.clear(); }
-    size_t rows() const { return m_row; };
-    size_t cols() const { return m_col; };
+    size_t rows() const { return m_row; }
+    size_t cols() const { return m_col; }
 
 private:
     size_t m_row = 0;
@@ -121,63 +159,16 @@ inline bool to_bool(const std::string& input)
     }
 }
 
-inline int parseLine(char* line)
+template <typename T>
+inline bool within_bound(const T& input, const T& low_bound, const T& up_bound)
 {
-    // This assumes that a digit will be found and the line ends in " Kb".
-    int i = strlen(line);
-    const char* p = line;
-    while (*p < '0' || *p > '9') p++;
-    line[i - 3] = '\0';
-    i = atoi(p);
-    return i;
+    assert(low_bound <= up_bound);
+    return !(input < low_bound || input > up_bound);
 }
 
-
-inline int getValue()
-{ // Note: this value is in KB!
-    FILE* file = fopen("/proc/self/status", "r");
-    int result = -1;
-    char line[128];
-
-    while (fgets(line, 128, file) != NULL) {
-        if (strncmp(line, "VmSize:", 7) == 0) {
-            result = parseLine(line);
-            break;
-        }
-    }
-    fclose(file);
-    return result;
-}
-
-// this works on MAC and Linux
-inline size_t current_ram_usage()
-{
-#if defined __APPLE__
-    // From https://stackoverflow.com/a/1911863
-    struct task_basic_info t_info;
-    mach_msg_type_number_t t_info_count = TASK_BASIC_INFO_COUNT;
-
-    if (KERN_SUCCESS
-        != task_info(mach_task_self(), TASK_BASIC_INFO, (task_info_t) &t_info,
-                     &t_info_count))
-    {
-        throw std::runtime_error("Unable to determine memory used");
-    }
-    return t_info.resident_size;
-#elif defined _WIN32
-    PROCESS_MEMORY_COUNTERS_EX memCounter;
-    GetProcessMemoryInfo(
-        GetCurrentProcess(),
-        reinterpret_cast<PPROCESS_MEMORY_COUNTERS>(&memCounter),
-        sizeof(memCounter));
-    // SIZE_T virtualMemUsedByMe = memCounter.PrivateUsage;
-    SIZE_T physMemUsedByMe = memCounter.WorkingSetSize;
-    return physMemUsedByMe;
-#else
-    return getValue() * 1024;
-#endif
-}
-
+// TODO: Delete this, doesn't seems to give robust answer
+inline size_t current_ram_usage() { return 0; }
+// TODO: Delete this, doesn't seems to give robust answer
 inline size_t total_ram_available()
 {
 #ifdef __APPLE__
@@ -207,9 +198,7 @@ inline size_t total_ram_available()
            * ((size_t) sysconf(_SC_PAGESIZE)) / 1048576;
 #endif
 #endif
-    if (!llxx) {
-        default_alloc_mb = BIGSTACK_DEFAULT_MB;
-    }
+    if (!llxx) { default_alloc_mb = BIGSTACK_DEFAULT_MB; }
     else if (llxx < (BIGSTACK_MIN_MB * 2))
     {
         default_alloc_mb = BIGSTACK_MIN_MB;
@@ -218,31 +207,26 @@ inline size_t total_ram_available()
     {
         default_alloc_mb = llxx / 2;
     }
-    if (!malloc_size_mb) {
-        malloc_size_mb = default_alloc_mb;
-    }
+    if (!malloc_size_mb) { malloc_size_mb = default_alloc_mb; }
     else if (malloc_size_mb < BIGSTACK_MIN_MB)
     {
         malloc_size_mb = BIGSTACK_MIN_MB;
     }
     std::string message = "";
 #ifndef __LP64__
-    if (malloc_size_mb > 2047) {
-        malloc_size_mb = 2047;
-    }
+    if (malloc_size_mb > 2047) { malloc_size_mb = 2047; }
 #endif
     bigstack_ua =
         (unsigned char*) malloc(malloc_size_mb * 1048576 * sizeof(char));
     // if fail, return nullptr which will then get into the while loop
-    while (!bigstack_ua) {
+    while (!bigstack_ua)
+    {
         malloc_size_mb = (malloc_size_mb * 3) / 4;
-        if (malloc_size_mb < BIGSTACK_MIN_MB) {
-            malloc_size_mb = BIGSTACK_MIN_MB;
-        }
+        if (malloc_size_mb < BIGSTACK_MIN_MB)
+        { malloc_size_mb = BIGSTACK_MIN_MB; }
         bigstack_ua =
             (unsigned char*) malloc(malloc_size_mb * 1048576 * sizeof(char));
-        if (bigstack_ua) {
-        }
+        if (bigstack_ua) {}
         else if (malloc_size_mb == BIGSTACK_MIN_MB)
         {
             throw std::runtime_error("Failed to allocate required memory");
@@ -266,7 +250,7 @@ public:
     void push(double x)
     {
         double delta, delta_n, delta_n2, term1;
-
+        s += x;
         size_t n1 = n;
         n++;
         delta = x - M1;
@@ -284,13 +268,14 @@ public:
 
     double mean() const { return M1; }
 
-    double var() const { return M2 / ((double) n - 1.0); }
+    double var() const { return M2 / (static_cast<double>(n) - 1.0); }
 
     double sd() const { return sqrt(var()); }
+    double sum() const { return s; }
 
 private:
     size_t n = 0;
-    double M1 = 0, M2 = 0, M3 = 0, M4 = 0;
+    double M1 = 0.0, M2 = 0.0, M3 = 0.0, M4 = 0.0, s = 0.0;
 };
 
 
@@ -300,20 +285,113 @@ double qnorm(double p, double mu = 0.0, double sigma = 1.0,
              bool lower_tail = true, bool log_p = false);
 
 // codes from stackoverflow
-std::vector<std::string> split(const std::string& seq,
-                               const std::string& separators = "\t ");
+inline std::vector<std::string> split(const std::string& seq,
+                                      const std::string& separators = "\t ")
+{
+    std::size_t prev = 0, pos;
+    std::vector<std::string> result;
+    while ((pos = seq.find_first_of(separators, prev)) != std::string::npos)
+    {
+        if (pos > prev) result.emplace_back(seq.substr(prev, pos - prev));
+        prev = pos + 1;
+    }
+    if (prev < seq.length()) result.emplace_back(seq.substr(prev, pos - prev));
+    return result;
+}
 
+inline void split(std::vector<std::string>& result, const std::string& seq,
+                  const std::string& separators = "\t ")
+{
+    std::size_t prev = 0, pos, idx = 0;
+    const size_t init_size = result.size();
+    // assuming we have the same size
+    // result.clear();
+    while ((pos = seq.find_first_of(separators, prev)) != std::string::npos)
+    {
+        if (pos > prev)
+        {
+            if (idx >= init_size)
+            { result.emplace_back(seq.substr(prev, pos - prev)); }
+            else
+            {
+                result[idx] = seq.substr(prev, pos - prev);
+            }
+            ++idx;
+        }
+        prev = pos + 1;
+    }
+    if (prev < seq.length())
+    {
+        if (idx > init_size)
+        { result.emplace_back(seq.substr(prev, pos - prev)); }
+        else
+        {
+            result[idx] = seq.substr(prev, pos - prev);
+            ++idx;
+        }
+    }
+    if (idx < init_size) { result.resize(idx); }
+}
+inline std::vector<std::string_view> tokenize(std::string_view str,
+                                              std::string delims = "\t ")
+{
+    std::vector<std::string_view> output;
+    // output.reserve(str.size() / 2);
+    auto first = str.data();
+    auto second = first;
+    auto last = str.end();
+    for (; second != last && first != last; first = second + 1)
+    {
+        second = std::find_first_of(first, last, std::cbegin(delims),
+                                    std::cend(delims));
+        if (first != second) output.emplace_back(first, second - first);
+    }
+    // output.emplace_back(first, second - first);
+    return output;
+}
+
+
+class Convertor
+{
+public:
+    template <typename T>
+    static T convert(const std::string& str)
+    {
+        errno = 0;
+        std::istringstream iss(str);
+        T obj;
+        iss >> obj;
+        if (!iss.eof() || iss.fail())
+        { throw std::runtime_error("Unable to convert the input"); }
+        if constexpr (std::is_same_v<T, double>)
+        {
+            if ((std::fpclassify(obj) != FP_NORMAL
+                 && std::fpclassify(obj) != FP_ZERO)
+                || errno == ERANGE)
+            { throw std::runtime_error("Unable to convert the input"); }
+        }
+        else if constexpr (std::is_same_v<T, size_t>)
+        {
+            if (static_cast<int>(obj) < 0)
+            {
+                throw std::runtime_error(
+                    "Error: Negative input for a positive "
+                    "variable, or you have a very large integer, e.g. larger "
+                    "than "
+                    + std::to_string(std::numeric_limits<int>::max()));
+            }
+        }
+        return obj;
+    }
+
+
+private:
+    static std::istringstream iss;
+};
 template <typename T>
 inline T convert(const std::string& str)
 {
-    std::istringstream iss(str);
-    T obj;
-    iss >> obj;
-
-    if (!iss.eof() || iss.fail()) {
-        throw std::runtime_error("Unable to convert the input");
-    }
-    return obj;
+    return Convertor::convert<T>(str);
 }
 template <typename T>
 inline std::string to_string(T value)
@@ -322,18 +400,91 @@ inline std::string to_string(T value)
     out << value;
     return out.str();
 }
+
+// NOTE: Didn't work for non-ASCII characters
+inline void to_upper(std::string& str)
+{
+    std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+}
+inline void to_lower(std::string& str)
+{
+    std::transform(str.begin(), str.end(), str.begin(), ::tolower);
+}
+
+inline void to_upper(const std::string& input, std::string& out)
+{
+    out.resize(input.size());
+    std::transform(input.begin(), input.end(), out.begin(), ::toupper);
+}
+inline void to_lower(const std::string& input, std::string& out)
+{
+    out.resize(input.size());
+    std::transform(input.begin(), input.end(), out.begin(), ::tolower);
+}
+template <class T>
+inline bool overflow(const T a, const T b)
+{
+    if (a == 0 || b == 0) return false;
+    T result = a * b;
+    return !(a == result / b);
+}
+
+
+// trim functions from https://stackoverflow.com/a/217605
 // trim from start (in place)
+inline std::string_view ltrimmed(std::string_view s)
+{
+    s.remove_prefix(std::distance(
+        s.cbegin(), std::find_if(s.cbegin(), s.cend(),
+                                 [](int ch) { return std::isgraph(ch); })));
+
+    return s;
+}
+
+inline std::string_view rtrimmed(std::string_view s)
+{
+    s.remove_suffix(std::distance(
+        s.crbegin(), std::find_if(s.crbegin(), s.crend(),
+                                  [](int ch) { return std::isgraph(ch); })));
+    return s;
+}
+
+inline std::string_view trimmed(std::string_view s)
+{
+    return ltrimmed(rtrimmed(s));
+}
+inline void ltrim(std::string_view& s)
+{
+    s.remove_prefix(std::distance(
+        s.cbegin(), std::find_if(s.cbegin(), s.cend(),
+                                 [](int ch) { return std::isgraph(ch); })));
+}
+
+inline void rtrim(std::string_view& s)
+{
+    s.remove_suffix(std::distance(
+        s.crbegin(), std::find_if(s.crbegin(), s.crend(),
+                                  [](int ch) { return std::isgraph(ch); })));
+}
+
+inline void trim(std::string_view& s)
+{
+    rtrim(s);
+    ltrim(s);
+}
+
+
 inline void ltrim(std::string& s)
 {
-    s.erase(s.begin(),
-            std::find_if(s.begin(), s.end(),
-                         std::not1(std::ptr_fun<int, int>(std::isspace))));
+    s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                    [](int ch) { return std::isgraph(ch); }));
 };
+
 // trim from end (in place)
 inline void rtrim(std::string& s)
 {
     s.erase(std::find_if(s.rbegin(), s.rend(),
-                         std::not1(std::ptr_fun<int, int>(std::isspace)))
+                         [](int ch) { return std::isgraph(ch); })
                 .base(),
             s.end());
 };
@@ -378,7 +529,9 @@ inline T remove_extension(T const& filename)
 inline void replace_substring(std::string& s, const std::string& search,
                               const std::string& replace)
 {
-    for (size_t pos = 0;; pos += replace.length()) {
+    if (search.empty()) return;
+    for (size_t pos = 0;; pos += replace.length())
+    {
         // Locate the substring to replace
         pos = s.find(search, pos);
         if (pos == std::string::npos) break;
@@ -460,26 +613,21 @@ inline double betacf_slow(double aa, double bb, double xx)
     double qam = aa - 1.0;
     double cc = 1.0;
     double dd = 1.0 - qab * xx / qap;
-    if (fabs(dd) < kLentzFpmin) {
-        dd = kLentzFpmin;
-    }
+    if (fabs(dd) < kLentzFpmin) { dd = kLentzFpmin; }
     dd = 1.0 / dd;
     double hh = dd;
     // evaluate 1 / (1 + d_1 / (1 + d_2 / (1 + d_3 / (...))))
-    for (double mm = 1.0; mm <= 100.0; mm += 1.0) {
+    for (double mm = 1.0; mm <= 100.0; mm += 1.0)
+    {
         double m2 = 2 * mm;
 
         // d_{2m}
         double tmp_aa = mm * (bb - mm) * xx / ((qam + m2) * (aa + m2));
 
         dd = 1.0 + tmp_aa * dd;
-        if (fabs(dd) < kLentzFpmin) {
-            dd = kLentzFpmin;
-        }
+        if (fabs(dd) < kLentzFpmin) { dd = kLentzFpmin; }
         cc = 1.0 + tmp_aa / cc;
-        if (fabs(cc) < kLentzFpmin) {
-            cc = kLentzFpmin;
-        }
+        if (fabs(cc) < kLentzFpmin) { cc = kLentzFpmin; }
         dd = 1.0 / dd;
         hh *= dd * cc;
 
@@ -487,19 +635,13 @@ inline double betacf_slow(double aa, double bb, double xx)
         tmp_aa = -(aa + mm) * (qab + mm) * xx / ((aa + m2) * (qap + m2));
 
         dd = 1.0 + tmp_aa * dd;
-        if (fabs(dd) < kLentzFpmin) {
-            dd = kLentzFpmin;
-        }
+        if (fabs(dd) < kLentzFpmin) { dd = kLentzFpmin; }
         cc = 1.0 + tmp_aa / cc;
-        if (fabs(cc) < kLentzFpmin) {
-            cc = kLentzFpmin;
-        }
+        if (fabs(cc) < kLentzFpmin) { cc = kLentzFpmin; }
         dd = 1.0 / dd;
         double del = dd * cc;
         hh *= del;
-        if (fabs(del - 1.0) < 3.0e-7) {
-            return hh;
-        }
+        if (fabs(del - 1.0) < 3.0e-7) { return hh; }
     }
     // don't detect failure for now
     return hh;
@@ -507,20 +649,14 @@ inline double betacf_slow(double aa, double bb, double xx)
 
 inline double betai_slow(double aa, double bb, double xx)
 {
-    if ((xx < 0.0) || (xx > 1.0)) {
-        return -9;
-    }
+    if ((xx < 0.0) || (xx > 1.0)) { return -9; }
     uint32_t do_invert = (xx * (aa + bb + 2.0)) >= (aa + 1.0);
-    if ((xx == 0.0) || (xx == 1.0)) {
-        return (double) ((int32_t) do_invert);
-    }
+    if ((xx == 0.0) || (xx == 1.0)) { return (double) ((int32_t) do_invert); }
     // this is very expensive
     double bt = exp(lgamma(aa + bb) - lgamma(aa) - lgamma(bb) + aa * log(xx)
                     + bb * log(1.0 - xx));
 
-    if (!do_invert) {
-        return bt * betacf_slow(aa, bb, xx) / aa;
-    }
+    if (!do_invert) { return bt * betacf_slow(aa, bb, xx) / aa; }
     return 1.0 - bt * betacf_slow(bb, aa, 1.0 - xx) / bb;
 }
 
@@ -529,9 +665,7 @@ inline double calc_tprob(double tt, double df)
     // must be thread-safe, so dcdflib won't cut it.
     // move this to plink2_stats once it's ready (and probably just eliminate
     // dcdflib entirely)
-    if (!realnum(tt)) {
-        return -9;
-    }
+    if (!realnum(tt)) { return -9; }
     return betai_slow(df * 0.5, 0.5, df / (df + tt * tt));
 }
 
@@ -566,28 +700,21 @@ inline double upper_gamma_fraction(double a1, double z1)
 
     double hh = cur_b;
     const double a0 = a1 - 1.0;
-    if (fabs(hh) < kLentzFpmin) {
-        hh = kLentzFpmin;
-    }
+    if (fabs(hh) < kLentzFpmin) { hh = kLentzFpmin; }
     double cc = hh;
     double dd = 0.0;
-    for (double kk = 2.0; kk <= 100.0; kk += 1.0) {
+    for (double kk = 2.0; kk <= 100.0; kk += 1.0)
+    {
         const double cur_a = kk * (a1 - kk);
         cur_b += 2.0;
         dd = cur_b + cur_a * dd;
-        if (fabs(dd) < kLentzFpmin) {
-            dd = kLentzFpmin;
-        }
+        if (fabs(dd) < kLentzFpmin) { dd = kLentzFpmin; }
         cc = cur_b + cur_a / cc;
-        if (fabs(cc) < kLentzFpmin) {
-            cc = kLentzFpmin;
-        }
+        if (fabs(cc) < kLentzFpmin) { cc = kLentzFpmin; }
         dd = 1.0 / dd;
         const double delta = cc * dd;
         hh *= delta;
-        if (fabs(delta - 1.0) < 3.0e-7) {
-            break;
-        }
+        if (fabs(delta - 1.0) < 3.0e-7) { break; }
     }
     const double cont_frac = a0 / hh;
     return 1 / (z1 - a1 + 1 + cont_frac);
@@ -624,14 +751,10 @@ inline double tgamma_small_upper_part_df1(double xx, uint32_t invert,
     result -= pp;
     result *= 2;
     pp += 1;
-    if (p_derivative) {
-        *p_derivative = pp / ((*pgam) * exp(xx));
-    }
+    if (p_derivative) { *p_derivative = pp / ((*pgam) * exp(xx)); }
     const double init_value = invert ? (*pgam) : 0;
     result = -pp * small_gamma2_series(0.5, xx, (init_value - result) / pp);
-    if (invert) {
-        result = -result;
-    }
+    if (invert) { result = -result; }
     return result;
 }
 
@@ -656,19 +779,19 @@ inline double finite_half_gamma_q(double aa, double xx, double* p_derivative)
     // a is in {0.5, 1.5, ..., 29.5}; max(0.2, a-1) < x < log_max_value
     const double sqrt_x = sqrt(xx);
     double ee = erfc_fast(sqrt_x);
-    if ((ee != 0) && (aa > 1)) {
+    if ((ee != 0) && (aa > 1))
+    {
         double term = exp(-xx) / (kSqrtPi * sqrt_x);
         term *= xx * 2;
         double sum = term;
-        for (double nn = 1.5; nn < aa; nn += 1.0) {
+        for (double nn = 1.5; nn < aa; nn += 1.0)
+        {
             term /= nn;
             term *= xx;
             sum += term;
         }
         ee += sum;
-        if (p_derivative) {
-            *p_derivative = 0;
-        }
+        if (p_derivative) { *p_derivative = 0; }
     }
     else if (p_derivative)
     {
@@ -682,19 +805,17 @@ inline double finite_gamma_q(uint32_t aa, double xx, double* p_derivative)
     // a is a positive integer < 30; max(0.6, a-1) < x < log_max_value
     // (e^{-x})(1 + x + x^2/2 + x^3/3! + x^4/4! + ... + x^{a-1}/(a-1)!)
     const double ee = exp(-xx);
-    if (ee == 0.0) {
-        return 0;
-    }
+    if (ee == 0.0) { return 0; }
     double sum = ee;
     double term = sum;
-    for (uint32_t nn = 1; nn < aa; ++nn) {
+    for (uint32_t nn = 1; nn < aa; ++nn)
+    {
         term /= (double) ((int32_t) nn);
         term *= xx;
         sum += term;
     }
-    if (p_derivative) {
-        *p_derivative = ee * pow(xx, (int32_t) aa) / kFactorials[aa - 1];
-    }
+    if (p_derivative)
+    { *p_derivative = ee * pow(xx, (int32_t) aa) / kFactorials[aa - 1]; }
     return sum;
 }
 
@@ -702,10 +823,12 @@ inline double lanczos_sum_expg_scaled_recip(double zz)
 {
     double s1;
     double s2;
-    if (zz <= 1) {
+    if (zz <= 1)
+    {
         s1 = kLanczosSumExpgNumer[5];
         s2 = kLanczosSumExpgDenom[5];
-        for (int32_t ii = 4; ii >= 0; --ii) {
+        for (int32_t ii = 4; ii >= 0; --ii)
+        {
             s1 *= zz;
             s2 *= zz;
             s1 += kLanczosSumExpgNumer[(uint32_t) ii];
@@ -717,7 +840,8 @@ inline double lanczos_sum_expg_scaled_recip(double zz)
         zz = 1 / zz;
         s1 = kLanczosSumExpgNumer[0];
         s2 = kLanczosSumExpgDenom[0];
-        for (uint32_t uii = 1; uii < 6; ++uii) {
+        for (uint32_t uii = 1; uii < 6; ++uii)
+        {
             s1 *= zz;
             s2 *= zz;
             s1 += kLanczosSumExpgNumer[uii];
@@ -733,7 +857,8 @@ inline double log1pmx(double xx)
     // log(1+x) - x
     // assumes abs(xx) < 0.95
     const double aa = fabs(xx);
-    if (aa < (kBigEpsilon / kSqrt2)) { // 2^{-21.5}
+    if (aa < (kBigEpsilon / kSqrt2))
+    { // 2^{-21.5}
         return -xx * xx * 0.5;
     }
     double kk = 1.0; // skip first term of usual log(1+x) series
@@ -757,14 +882,13 @@ inline double regularized_gamma_prefix(double aa, double zz)
 {
     // assumes a == 0.5 if a < 1.  assumes z > 0.
     // we are fine with float-level precision, so lanczos_n=6, kLanczosG=5.581
-    if (aa < 1) {
-        return sqrt(zz) * exp(-zz) * (1.0 / kSqrtPi);
-    }
+    if (aa < 1) { return sqrt(zz) * exp(-zz) * (1.0 / kSqrtPi); }
     const double agh = aa + kLanczosG - 0.5;
     const double agh_recip = 1.0 / agh;
     const double dd = ((zz - aa) - (kLanczosG - 0.5)) * agh_recip;
     double prefix;
-    if ((fabs(dd * dd * aa) <= 100) && (aa > 150)) {
+    if ((fabs(dd * dd * aa) <= 100) && (aa > 150))
+    {
         // abs(dd) < sqrt(2/3) < 0.95
         prefix = aa * log1pmx(dd) + zz * (0.5 - kLanczosG) * agh_recip;
         prefix = exp(prefix);
@@ -774,7 +898,8 @@ inline double regularized_gamma_prefix(double aa, double zz)
         const double alz = aa * log(zz * agh_recip);
         const double amz = aa - zz;
         const double cur_minv = MINV(alz, amz);
-        if ((cur_minv <= log_min_value) || (MAXV(alz, amz) >= log_max_value)) {
+        if ((cur_minv <= log_min_value) || (MAXV(alz, amz) >= log_max_value))
+        {
             const double amza = amz / aa;
             double sq;
             if ((cur_minv > 2 * log_min_value)
@@ -818,9 +943,7 @@ inline double igamma_temme_large(double aa, double xx)
     const double sqrt_phi = sqrt(phi);
     const double yy = aa * phi;
     double zz = kSqrt2 * sqrt_phi;
-    if (xx < aa) {
-        zz = -zz;
-    }
+    if (xx < aa) { zz = -zz; }
     double workspace[3];
     workspace[0] = (((((kTemmeC0[6] * zz + kTemmeC0[5]) * zz + kTemmeC0[4]) * zz
                       + kTemmeC0[3])
@@ -839,9 +962,7 @@ inline double igamma_temme_large(double aa, double xx)
     double result =
         (workspace[2] * a_recip + workspace[1]) * a_recip + workspace[0];
     result *= exp(-yy) / ((kSqrt2 * kSqrtPi) * sqrt_a);
-    if (xx < aa) {
-        result = -result;
-    }
+    if (xx < aa) { result = -result; }
     result += erfc_fast(sqrt_a * sqrt_phi) * 0.5;
     return result;
 }
@@ -856,12 +977,14 @@ inline double gamma_incomplete_imp2(uint32_t df, double xx, uint32_t invert,
         (df < 60) && (aa <= xx + 1) && (xx < log_max_value);
     uint32_t is_int = 0;
     uint32_t is_half_int = 0;
-    if (is_small_a) {
+    if (is_small_a)
+    {
         is_half_int = df % 2;
         is_int = !is_half_int;
     }
     uint32_t eval_method;
-    if (is_int && (xx > 0.6)) {
+    if (is_int && (xx > 0.6))
+    {
         invert = !invert;
         eval_method = 0;
     }
@@ -896,10 +1019,12 @@ inline double gamma_incomplete_imp2(uint32_t df, double xx, uint32_t invert,
     {
         const double x_minus_a = xx - aa;
         uint32_t use_temme = 0;
-        if (aa > 20) {
+        if (aa > 20)
+        {
             // sigma = abs((x - a) / a);
             // igamma_temme_large() assumes abs(sigma) < 0.95
-            if (aa > 200) {
+            if (aa > 200)
+            {
                 // abs(sigma) < sqrt(20 / a) < 0.316...
                 use_temme = (20 * aa > x_minus_a * x_minus_a);
             }
@@ -910,18 +1035,14 @@ inline double gamma_incomplete_imp2(uint32_t df, double xx, uint32_t invert,
                 use_temme = (sigma_times_a < 0.4 * aa);
             }
         }
-        if (use_temme) {
-            eval_method = 5;
-        }
+        if (use_temme) { eval_method = 5; }
         else
         {
             // x - (1 / (3 * x)) < a
             // x * x - (1/3) < a * x
             // x * x - a * x < 1/3
             // x * (x - a) < 1/3
-            if (xx * x_minus_a < (1.0 / 3.0)) {
-                eval_method = 2;
-            }
+            if (xx * x_minus_a < (1.0 / 3.0)) { eval_method = 2; }
             else
             {
                 eval_method = 4;
@@ -937,25 +1058,25 @@ inline double gamma_incomplete_imp2(uint32_t df, double xx, uint32_t invert,
         // previously used erfc, but that was up to ~3x as slow as dcdflib (e.g.
         // chiprob_p(2.706, 1) case).
         result = finite_half_gamma_q(aa, xx, p_derivative);
-        if (p_derivative && (*p_derivative == 0)) {
-            *p_derivative = regularized_gamma_prefix(aa, xx);
-        }
+        if (p_derivative && (*p_derivative == 0))
+        { *p_derivative = regularized_gamma_prefix(aa, xx); }
         break;
     case 2:
         result = regularized_gamma_prefix(aa, xx);
-        if (p_derivative) {
-            *p_derivative = result;
-        }
-        if (result != 0) {
+        if (p_derivative) { *p_derivative = result; }
+        if (result != 0)
+        {
             // uint32_t optimized_invert = 0;
             double init_value = 0;
-            if (invert) {
+            if (invert)
+            {
                 init_value = -aa / result;
                 // optimized_invert = 1;
             }
             result *= lower_gamma_series(aa, xx, init_value) / aa;
             // if (optimized_invert) {
-            if (invert) {
+            if (invert)
+            {
                 invert = 0;
                 result = -result;
             }
@@ -972,30 +1093,20 @@ inline double gamma_incomplete_imp2(uint32_t df, double xx, uint32_t invert,
     break;
     case 4:
         result = regularized_gamma_prefix(aa, xx);
-        if (p_derivative) {
-            *p_derivative = result;
-        }
-        if (result != 0) {
-            result *= upper_gamma_fraction(aa, xx);
-        }
+        if (p_derivative) { *p_derivative = result; }
+        if (result != 0) { result *= upper_gamma_fraction(aa, xx); }
         break;
     case 5:
         result = igamma_temme_large(aa, xx);
-        if (xx >= aa) {
-            invert = !invert;
-        }
-        if (p_derivative) {
-            *p_derivative = regularized_gamma_prefix(aa, xx);
-        }
+        if (xx >= aa) { invert = !invert; }
+        if (p_derivative) { *p_derivative = regularized_gamma_prefix(aa, xx); }
     }
-    if (result > 1) {
-        result = 1;
-    }
-    if (invert) {
-        result = 1 - result;
-    }
-    if (p_derivative) {
-        if ((xx < 1) && (DBL_MAX * xx < (*p_derivative))) {
+    if (result > 1) { result = 1; }
+    if (invert) { result = 1 - result; }
+    if (p_derivative)
+    {
+        if ((xx < 1) && (DBL_MAX * xx < (*p_derivative)))
+        {
             *p_derivative = DBL_MAX / 2; // overflow; do we really need this?
         }
         else
@@ -1006,12 +1117,13 @@ inline double gamma_incomplete_imp2(uint32_t df, double xx, uint32_t invert,
     return result;
 }
 
-inline double chiprob_p(double chisq, uint32_t df)
-{
-    // todo: figure out when we were depending on this to return -9, and decide
-    // how to handle those situations now
-    return gamma_incomplete_imp2(df, chisq * 0.5, 1, nullptr);
-}
+// inline double chiprob_p(double chisq, uint32_t df)
+//{
+//    // todo: figure out when we were depending on this to return -9, and
+//    decide
+//    // how to handle those situations now
+//    return gamma_incomplete_imp2(df, chisq * 0.5, 1, nullptr);
+//}
 
 /*!
  * \brief Function to check if two double are equal from
@@ -1029,5 +1141,283 @@ inline bool logically_equal(double a, double b, double error_factor = 1.0)
                                       * std::numeric_limits<double>::epsilon()
                                       * error_factor));
 }
+
+inline size_t get_num_line(std::unique_ptr<std::istream>& input)
+{
+    // assert(input->is_open());
+    size_t num_line = 0;
+    std::string line;
+    while (std::getline(*input, line))
+    {
+        misc::trim(line);
+        if (line.empty()) continue;
+        ++num_line;
+    }
+    input->clear();
+    input->seekg(0, input->beg);
+    return num_line;
 }
-#endif /* misc_hpp */
+
+inline std::unique_ptr<std::istream>
+load_stream(const std::string& filepath,
+            std::ios_base::openmode mode = std::ios_base::in)
+{
+    auto file = std::make_unique<std::ifstream>(filepath.c_str(), mode);
+    if (!file->is_open())
+    { throw std::runtime_error("Error: Cannot open file: " + filepath); }
+    return std::unique_ptr<std::istream>(*file ? std::move(file) : nullptr);
+}
+
+
+inline bool isNumeric(const std::string& s)
+{
+    try
+    {
+        Convertor::convert<double>(s);
+    }
+    catch (...)
+    {
+        return false;
+    }
+    return true;
+}
+
+inline int string_to_int(const char* p)
+{
+    int x = 0;
+    bool neg = false;
+    if (*p == '-')
+    {
+        neg = true;
+        ++p;
+    }
+    else if (*p == '+')
+    {
+        ++p;
+    }
+    else if (*p < '0' || *p > '9')
+    {
+        throw std::runtime_error("Error: Not an integer\n");
+    }
+    while (*p >= '0' && *p <= '9')
+    {
+        x = (x * 10) + (*p - '0');
+        ++p;
+    }
+    if (neg) { x = -x; }
+    return x;
+}
+inline size_t string_to_size_t(const char* p)
+{
+    size_t x = 0;
+    if (*p == '-')
+    {
+        throw std::runtime_error(
+            "Error: Negative value, cannot be assigned to unsigned integer\n");
+    }
+    else if (*p == '+')
+    {
+        ++p;
+    }
+    else if (*p < '0' || *p > '9')
+    {
+        throw std::runtime_error("Error: Not an integer\n");
+    }
+    while (*p >= '0' && *p <= '9')
+    {
+        x = (x * 10) + static_cast<size_t>(*p - '0');
+        ++p;
+    }
+    return x;
+}
+// from https://stackoverflow.com/a/874160
+inline bool hasEnding(const std::string& fullString, const std::string& ending)
+{
+    if (fullString.empty())
+        throw std::runtime_error(
+            "Error: Cannot look for ending of an empty string");
+    else if (ending.empty())
+        throw std::runtime_error(
+            "Error: Undefined behaviour. Cannot look for empty ending in "
+            "string");
+    else if (fullString.length() >= ending.length())
+    {
+        return (fullString.compare(fullString.length() - ending.length(),
+                                   ending.length(), ending)
+                == 0);
+    }
+    else
+    {
+        return false;
+    }
+}
+
+/**
+ * Returns the peak (maximum so far) resident set size (physical
+ * memory use) measured in bytes, or zero if the value cannot be
+ * determined on this OS.
+ * From https://stackoverflow.com/a/14927379
+ */
+inline size_t getPeakRSS()
+{
+#if defined(_WIN32)
+    /* Windows -------------------------------------------------- */
+    PROCESS_MEMORY_COUNTERS info;
+    GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info));
+    return (size_t) info.PeakWorkingSetSize;
+
+#elif (defined(_AIX) || defined(__TOS__AIX__)) \
+    || (defined(__sun__) || defined(__sun)     \
+        || defined(sun) && (defined(__SVR4) || defined(__svr4__)))
+    /* AIX and Solaris ------------------------------------------ */
+    struct psinfo psinfo;
+    int fd = -1;
+    if ((fd = open("/proc/self/psinfo", O_RDONLY)) == -1)
+        return (size_t) 0L; /* Can't open? */
+    if (read(fd, &psinfo, sizeof(psinfo)) != sizeof(psinfo))
+    {
+        close(fd);
+        return (size_t) 0L; /* Can't read? */
+    }
+    close(fd);
+    return (size_t)(psinfo.pr_rssize * 1024L);
+
+#elif defined(__unix__) || defined(__unix) || defined(unix) \
+    || (defined(__APPLE__) && defined(__MACH__))
+    /* BSD, Linux, and OSX -------------------------------------- */
+    struct rusage rusage;
+    getrusage(RUSAGE_SELF, &rusage);
+#if defined(__APPLE__) && defined(__MACH__)
+    return (size_t) rusage.ru_maxrss;
+#else
+    return (size_t)(rusage.ru_maxrss * 1024L);
+#endif
+
+#else
+    /* Unknown OS ----------------------------------------------- */
+    return (size_t) 0L; /* Unsupported. */
+#endif
+}
+
+
+/**
+ * Returns the current resident set size (physical memory use) measured
+ * in bytes, or zero if the value cannot be determined on this OS.
+ */
+inline size_t getCurrentRSS()
+{
+#if defined(_WIN32)
+    /* Windows -------------------------------------------------- */
+    PROCESS_MEMORY_COUNTERS info;
+    GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info));
+    return (size_t) info.WorkingSetSize;
+
+#elif defined(__APPLE__) && defined(__MACH__)
+    /* OSX ------------------------------------------------------ */
+    struct mach_task_basic_info info;
+    mach_msg_type_number_t infoCount = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t) &info,
+                  &infoCount)
+        != KERN_SUCCESS)
+        return (size_t) 0L; /* Can't access? */
+    return (size_t) info.resident_size;
+
+#elif defined(__linux__) || defined(__linux) || defined(linux) \
+    || defined(__gnu_linux__)
+    /* Linux ---------------------------------------------------- */
+    long rss = 0L;
+    FILE* fp = NULL;
+    if ((fp = fopen("/proc/self/statm", "r")) == NULL)
+        return (size_t) 0L; /* Can't open? */
+    if (fscanf(fp, "%*s%ld", &rss) != 1)
+    {
+        fclose(fp);
+        return (size_t) 0L; /* Can't read? */
+    }
+    fclose(fp);
+    return (size_t) rss * (size_t) sysconf(_SC_PAGESIZE);
+
+#else
+    /* AIX, BSD, Solaris, and Unknown OS ------------------------ */
+    return (size_t) 0L; /* Unsupported. */
+#endif
+}
+
+
+/**
+ * Returns the size of physical memory (RAM) in bytes.
+ */
+inline size_t getMemorySize()
+{
+#if defined(_WIN32) && (defined(__CYGWIN__) || defined(__CYGWIN32__))
+    /* Cygwin under Windows. ------------------------------------ */
+    /* New 64-bit MEMORYSTATUSEX isn't available.  Use old 32.bit */
+    MEMORYSTATUS status;
+    status.dwLength = sizeof(status);
+    GlobalMemoryStatus(&status);
+    return (size_t) status.dwTotalPhys;
+
+#elif defined(_WIN32)
+    /* Windows. ------------------------------------------------- */
+    /* Use new 64-bit MEMORYSTATUSEX, not old 32-bit MEMORYSTATUS */
+    MEMORYSTATUSEX status;
+    status.dwLength = sizeof(status);
+    GlobalMemoryStatusEx(&status);
+    return (size_t) status.ullTotalPhys;
+
+#elif defined(__unix__) || defined(__unix) || defined(unix) \
+    || (defined(__APPLE__) && defined(__MACH__))
+    /* UNIX variants. ------------------------------------------- */
+    /* Prefer sysctl() over sysconf() except sysctl() HW_REALMEM and HW_PHYSMEM
+     */
+
+#if defined(CTL_HW) && (defined(HW_MEMSIZE) || defined(HW_PHYSMEM64))
+    int mib[2];
+    mib[0] = CTL_HW;
+#if defined(HW_MEMSIZE)
+    mib[1] = HW_MEMSIZE; /* OSX. --------------------- */
+#elif defined(HW_PHYSMEM64)
+    mib[1] = HW_PHYSMEM64; /* NetBSD, OpenBSD. --------- */
+#endif
+    int64_t size = 0;    /* 64-bit */
+    size_t len = sizeof(size);
+    if (sysctl(mib, 2, &size, &len, NULL, 0) == 0) return (size_t) size;
+    return 0L; /* Failed? */
+
+#elif defined(_SC_AIX_REALMEM)
+    /* AIX. ----------------------------------------------------- */
+    return (size_t) sysconf(_SC_AIX_REALMEM) * (size_t) 1024L;
+
+#elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
+    /* FreeBSD, Linux, OpenBSD, and Solaris. -------------------- */
+    return (size_t) sysconf(_SC_PHYS_PAGES) * (size_t) sysconf(_SC_PAGESIZE);
+
+#elif defined(_SC_PHYS_PAGES) && defined(_SC_PAGE_SIZE)
+    /* Legacy. -------------------------------------------------- */
+    return (size_t) sysconf(_SC_PHYS_PAGES) * (size_t) sysconf(_SC_PAGE_SIZE);
+
+#elif defined(CTL_HW) && (defined(HW_PHYSMEM) || defined(HW_REALMEM))
+    /* DragonFly BSD, FreeBSD, NetBSD, OpenBSD, and OSX. -------- */
+    int mib[2];
+    mib[0] = CTL_HW;
+#if defined(HW_REALMEM)
+    mib[1] = HW_REALMEM;   /* FreeBSD. ----------------- */
+#elif defined(HW_PYSMEM)
+    mib[1] = HW_PHYSMEM; /* Others. ------------------ */
+#endif
+    unsigned int size = 0; /* 32-bit */
+    size_t len = sizeof(size);
+    if (sysctl(mib, 2, &size, &len, NULL, 0) == 0) return (size_t) size;
+    return 0L; /* Failed? */
+#endif /* sysctl and sysconf variants */
+
+#else
+    return 0L;          /* Unknown OS. */
+#endif
+}
+
+inline unsigned long long remain_memory(const double& adjFactor = 0.8)
+{
+    return (misc::getMemorySize() * adjFactor - getCurrentRSS());
+}
+}

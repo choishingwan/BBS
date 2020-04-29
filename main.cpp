@@ -1,10 +1,3 @@
-/*
- * main.cpp
- *
- *  Created on: 15 May 2018
- *      Author: shingwanchoi
- *      Biobank Simulation
- */
 
 #include "genotype.h"
 #include "misc.hpp"
@@ -23,7 +16,7 @@
 void usage()
 {
     fprintf(stderr, "Biobank Simulation Tool\n");
-    fprintf(stderr, "Version 1.0 (20th Feb, 2019)\n");
+    fprintf(stderr, "Version 1.1 (29th April, 2020)\n");
     fprintf(stderr, "Usage: BBS [options]\n");
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "    --input   | -i    Input file prefix\n");
@@ -35,6 +28,8 @@ void usage()
     fprintf(stderr, "                      2 for Normal Distribution\n");
     fprintf(stderr,
             "    --fix     | -f    Fixed all effect size to this number\n");
+    fprintf(stderr,
+            "    --rand    | -r    Fixed all effect size to a random number\n");
     fprintf(stderr, "    --std     | -d    Standardize the genotype\n");
     fprintf(stderr, "    --extract | -E    List of SNPs to extract.\n");
     fprintf(stderr, "    --keep    | -k    List of samples to keep\n");
@@ -48,34 +43,28 @@ void usage()
 }
 
 
-std::unordered_set<std::string> extract_ref(const std::string& extract_name,
-                                            const size_t index)
+std::unordered_set<std::string>
+extract_ref(std::unique_ptr<std::istream> extract_file, const size_t index)
 {
     std::unordered_set<std::string> res;
-    if (extract_name.empty()) { return res; }
-    std::ifstream in;
-    in.open(extract_name.c_str());
-    if (!in.is_open())
-    {
-        throw std::runtime_error(
-            std::string("ERROR: Cannot open file: " + extract_name));
-    }
+    std::vector<std::string> token;
     std::string line;
-    while (std::getline(in, line))
+    while (std::getline(*extract_file, line))
     {
         misc::trim(line);
         if (line.empty()) continue;
-        std::vector<std::string> token = misc::split(line);
+        token = misc::split(line);
         if (token.size() <= index)
         {
             throw std::runtime_error(
-                std::string("ERROR: Number of column is less than expected!"));
+                "ERROR: Number of column is less than expected!");
         }
         res.insert(token[index]);
     }
-    in.close();
+    extract_file.reset();
     return res;
 }
+
 template <typename T>
 std::vector<double> generate_data(size_t size, T rand, std::mt19937 g)
 {
@@ -93,7 +82,7 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Please provide the required parameters\n");
         exit(-1);
     }
-    static const char* optString = "i:s:o:f:e:k:n:t:E:x:dH:h?";
+    static const char* optString = "i:s:o:f:e:k:n:t:E:x:rdH:h?";
     static const struct option longOpts[] = {
         {"input", required_argument, nullptr, 'i'},
         {"seed", required_argument, nullptr, 's'},
@@ -103,6 +92,7 @@ int main(int argc, char* argv[])
         {"keep", required_argument, nullptr, 'k'},
         {"nsnp", required_argument, nullptr, 'n'},
         {"fix", required_argument, nullptr, 'f'},
+        {"rand-fix", no_argument, nullptr, 'r'},
         {"thread", required_argument, nullptr, 't'},
         {"std", no_argument, nullptr, 'd'},
         {"x-var", required_argument, nullptr, 'x'},
@@ -113,7 +103,7 @@ int main(int argc, char* argv[])
     std::string prefix, out = "Out", extract, keep, herit, xvar;
     size_t seed = std::random_device()(), num_snp = 0, thread = 1, effect = 0;
     double fixed_effect = 0.0;
-    bool use_fixed = false, standardize = false;
+    bool use_fixed = false, standardize = false, use_rand_fixed = false;
 
     int longIndex = 0;
     int opt = 0;
@@ -138,6 +128,7 @@ int main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Effect size must be numeric!\n");
             }
             break;
+        case 'r': use_rand_fixed = true; break;
         case 's': seed = misc::convert<size_t>(optarg); break;
         case 'E': extract = optarg; break;
         case 'k': keep = optarg; break;
@@ -185,23 +176,32 @@ int main(int argc, char* argv[])
         }
         heritability.push_back(h);
     }
-    std::unordered_set<std::string> snp_list = extract_ref(extract, 0);
+    auto extract_file = misc::load_stream(extract);
+    auto keep_file = misc::load_stream(keep);
+    auto xvar_file = misc::load_stream(xvar);
+    std::unordered_set<std::string> snp_list =
+        extract_ref(std::move(extract_file), 0);
     std::cerr << "Keeping " << snp_list.size() << " SNPs" << std::endl;
-    std::unordered_set<std::string> sample_list = extract_ref(keep, 1);
+    std::unordered_set<std::string> sample_list =
+        extract_ref(std::move(keep_file), 1);
     // relatedness file should contain two column, ID1 and ID2, which
     // represents the related pair. Here, we will always exclude
     // sample in the second column from the variance calculation
-    std::unordered_set<std::string> no_varx_list = extract_ref(xvar, 1);
+    std::unordered_set<std::string> no_varx_list =
+        extract_ref(std::move(xvar_file), 1);
     // Read in the PLINK file information
-    Genotype geno(prefix);
-    geno.load_samples(sample_list, no_varx_list);
-    geno.load_snps(snp_list, num_snp, seed);
-    std::vector<double> score(geno.sample_size(), 0.0);
+    std::mt19937 g(seed);
     std::normal_distribution<double> norm_dist(0, 1);
     std::chi_squared_distribution<double> chi_dist(1);
     std::exponential_distribution<double> exp_dis(1);
+    if (use_rand_fixed) { fixed_effect = norm_dist(g); }
+
+    Genotype geno(prefix);
+
+    geno.load_samples(sample_list, no_varx_list);
+    geno.load_snps(snp_list, num_snp, seed);
+    std::vector<double> score(geno.sample_size(), 0.0);
     std::cerr << "Start generating X Beta" << std::endl;
-    std::mt19937 g(seed);
     std::vector<double> effect_sizes;
     if (use_fixed)
     {

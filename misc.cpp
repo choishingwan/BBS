@@ -1,5 +1,5 @@
-// This file is part of PRSice2.0, copyright (C) 2016-2017
-// Shing Wan Choi, Jack Euesden, Cathryn M. Lewis, Paul F. O’Reilly
+// This file is part of PRSice-2, copyright (C) 2016-2019
+// Shing Wan Choi, Paul F. O’Reilly
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -19,6 +19,9 @@
 
 namespace misc
 {
+std::istringstream Convertor::iss;
+
+
 double dnorm(double x, double mu, double sigma, bool log)
 {
 #ifdef IEEE_754
@@ -27,7 +30,8 @@ double dnorm(double x, double mu, double sigma, bool log)
 #endif
     if (!(std::isfinite(sigma))) return 0.0;
     if (!(std::isfinite(x)) && mu == x) throw std::runtime_error("NA produced");
-    if (sigma <= 0) {
+    if (sigma <= 0)
+    {
         if (sigma < 0) throw std::runtime_error("Negative sigma not allowed");
         return (x == mu) ? std::numeric_limits<double>::infinity() : 0.0;
     }
@@ -173,20 +177,5 @@ double qnorm(double p, double mu, double sigma, bool lower_tail, bool log_p)
         /* return (q >= 0.)? r : -r ;*/
     }
     return mu + sigma * val;
-}
-
-
-std::vector<std::string> split(const std::string& seq,
-                               const std::string& separators)
-{
-    std::size_t prev = 0, pos;
-    std::vector<std::string> result;
-    while ((pos = seq.find_first_of(separators, prev)) != std::string::npos) {
-        if (pos > prev) result.push_back(seq.substr(prev, pos - prev));
-        prev = pos + 1;
-    }
-    if (prev < seq.length())
-        result.push_back(seq.substr(prev, std::string::npos));
-    return result;
 }
 }

@@ -36,18 +36,14 @@ public:
     {
     }
     SNP(const std::string& f, const std::streampos& b, const double& m)
-        : file(f), byte_pos(b), maf(m)
+        : file(f), byte_pos(b)
     {
     }
     SNP(const std::string& f, const std::string& in, const size_t i)
         : file(f), name(in), byte_pos(i)
     {
     }
-    SNP(const SNP& s)
-        : file(s.file), name(s.name), byte_pos(s.byte_pos), maf(s.maf)
-    {
-    }
-    void set_maf(const double& input_maf) { maf = input_maf; }
+    SNP(const SNP& s) : file(s.file), name(s.name), byte_pos(s.byte_pos) {}
     void set_pos(const std::streampos& b) { byte_pos = b; }
     bool operator==(const SNP& s)
     {
@@ -65,7 +61,6 @@ public:
     std::string file;
     std::string name;
     std::streampos byte_pos;
-    double maf = 0.0;
 };
 
 class Genotype

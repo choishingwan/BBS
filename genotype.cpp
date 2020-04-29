@@ -256,76 +256,7 @@ void Genotype::load_snps(const std::unordered_set<std::string>& snp_list,
     // do multi-pass analysis, read in the bim file and get the number of SNPs
     m_existed_snps = gen_snp_vector(snp_list, num_selected, seed);
     std::cerr << m_existed_snps.size() << " SNPs remaining" << std::endl;
-    get_maf();
-}
-
-void Genotype::get_maf()
-{
-    std::ifstream bed_file;
-    std::string prev_file = "";
-    const uintptr_t final_mask =
-        get_final_mask(static_cast<uint32_t>(m_num_unrelated));
-    const uintptr_t unfiltered_sample_ctl =
-        BITCT_TO_WORDCT(m_unfiltered_sample_ct);
-    const uintptr_t pheno_nm_ctv2 = QUATERCT_TO_ALIGNED_WORDCT(m_num_unrelated);
-    std::vector<uintptr_t> sample_mask(pheno_nm_ctv2);
-    // fill it with the required mask (copy from PLINK2)
-    fill_quatervec_55(static_cast<uint32_t>(m_num_unrelated),
-                      sample_mask.data());
-    std::vector<uintptr_t> genotype(unfiltered_sample_ctl * 2, 0);
-    intptr_t nanal = 0;
-    uint32_t homrar_ct = 0, missing_ct = 0, het_ct = 0, homcom_ct = 0;
-    double cur_maf = 0.0;
-    std::streampos prev_loc = 0;
-    for (auto&& snp : m_existed_snps)
-    {
-        if (prev_file != snp.file)
-        {
-            if (bed_file.is_open()) { bed_file.close(); }
-            std::string cur_file = snp.file + ".bed";
-            bed_file.open(cur_file.c_str(), std::ios::binary);
-            if (!bed_file.is_open())
-            {
-                std::string error_message =
-                    "Error: Cannot open bed file: " + cur_file;
-                throw std::runtime_error(error_message);
-            }
-            prev_file = snp.file;
-            prev_loc = 0;
-        }
-        if (prev_loc != snp.byte_pos
-            && !bed_file.seekg(snp.byte_pos, std::ios_base::beg))
-        { throw std::runtime_error("Error: Cannot read the bed file!"); }
-
-        if (load_and_collapse_incl(
-                static_cast<uint32_t>(m_unfiltered_sample_ct),
-                static_cast<uint32_t>(m_num_unrelated), m_founder_info.data(),
-                final_mask, false, bed_file, m_tmp_genotype.data(),
-                genotype.data()))
-        {
-            std::string error_message =
-                "Error: Cannot read the bed file(read): " + prev_file;
-            throw std::runtime_error(error_message);
-        }
-        genovec_3freq(genotype.data(), sample_mask.data(), pheno_nm_ctv2,
-                      &missing_ct, &het_ct, &homcom_ct);
-        nanal = static_cast<uint32_t>(m_num_unrelated) - missing_ct;
-        // calculate the hom rare count
-        homrar_ct = static_cast<uint32_t>(nanal) - het_ct - homcom_ct;
-
-        if (nanal == 0)
-        {
-            // none of the sample contain this SNP
-            // still count as MAF filtering (for now)
-            fprintf(stderr, "Error: SNP with 100%% missingness. Please QC your "
-                            "data first\n");
-            exit(-1);
-        }
-
-        cur_maf = (static_cast<double>(het_ct + homrar_ct * 2)
-                   / (static_cast<double>(nanal) * 2.0));
-        snp.set_maf(cur_maf);
-    }
+    // get_maf();
 }
 
 

@@ -176,19 +176,28 @@ int main(int argc, char* argv[])
         }
         heritability.push_back(h);
     }
-    auto extract_file = misc::load_stream(extract);
-    auto keep_file = misc::load_stream(keep);
-    auto xvar_file = misc::load_stream(xvar);
-    std::unordered_set<std::string> snp_list =
-        extract_ref(std::move(extract_file), 0);
+    std::unordered_set<std::string> snp_list;
+    std::unordered_set<std::string> sample_list;
+    std::unordered_set<std::string> no_varx_list;
+    if (!extract.empty())
+    {
+        auto extract_file = misc::load_stream(extract);
+        snp_list = extract_ref(std::move(extract_file), 0);
+    }
+    if (!keep.empty())
+    {
+        auto keep_file = misc::load_stream(keep);
+        sample_list = extract_ref(std::move(keep_file), 1);
+    }
+    if (!xvar.empty())
+    {
+        auto xvar_file = misc::load_stream(xvar);
+        no_varx_list = extract_ref(std::move(xvar_file), 1);
+    }
     std::cerr << "Keeping " << snp_list.size() << " SNPs" << std::endl;
-    std::unordered_set<std::string> sample_list =
-        extract_ref(std::move(keep_file), 1);
     // relatedness file should contain two column, ID1 and ID2, which
     // represents the related pair. Here, we will always exclude
     // sample in the second column from the variance calculation
-    std::unordered_set<std::string> no_varx_list =
-        extract_ref(std::move(xvar_file), 1);
     // Read in the PLINK file information
     std::mt19937 g(seed);
     std::normal_distribution<double> norm_dist(0, 1);

@@ -16,7 +16,7 @@
 void usage()
 {
     fprintf(stderr, "Biobank Simulation Tool\n");
-    fprintf(stderr, "Version 1.1 (29th April, 2020)\n");
+    fprintf(stderr, "Version 1.2 (21th July, 2020)\n");
     fprintf(stderr, "Usage: BBS [options]\n");
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "    --input   | -i    Input file prefix\n");
@@ -183,6 +183,7 @@ int main(int argc, char* argv[])
     {
         auto extract_file = misc::load_stream(extract);
         snp_list = extract_ref(std::move(extract_file), 0);
+        std::cerr << "Keeping " << snp_list.size() << " SNPs" << std::endl;
     }
     if (!keep.empty())
     {
@@ -194,7 +195,6 @@ int main(int argc, char* argv[])
         auto xvar_file = misc::load_stream(xvar);
         no_varx_list = extract_ref(std::move(xvar_file), 1);
     }
-    std::cerr << "Keeping " << snp_list.size() << " SNPs" << std::endl;
     // relatedness file should contain two column, ID1 and ID2, which
     // represents the related pair. Here, we will always exclude
     // sample in the second column from the variance calculation
@@ -237,6 +237,7 @@ int main(int argc, char* argv[])
         }
     }
     geno.get_xbeta(score, effect_sizes, standardize, out);
+    std::cerr << score[0] << std::endl;
     // here we've got the XB stored in the score items we can then generate the
     // desired phenotypes
 

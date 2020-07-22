@@ -28,6 +28,7 @@ void usage()
     fprintf(stderr, "                      2 for Normal Distribution\n");
     fprintf(stderr,
             "    --fix     | -f    Fixed all effect size to this number\n");
+    fprintf(stderr, "    --file    | -F    Use effect size in this file\n");
     fprintf(stderr,
             "    --rand    | -r    Fixed all effect size to a random number\n");
     fprintf(stderr, "    --std     | -d    Standardize the genotype\n");
@@ -82,7 +83,7 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Please provide the required parameters\n");
         exit(-1);
     }
-    static const char* optString = "i:s:o:f:e:k:n:t:E:x:rdH:h?";
+    static const char* optString = "i:s:o:f:e:k:n:t:E:F:x:rdH:h?";
     static const struct option longOpts[] = {
         {"input", required_argument, nullptr, 'i'},
         {"seed", required_argument, nullptr, 's'},
@@ -92,6 +93,7 @@ int main(int argc, char* argv[])
         {"keep", required_argument, nullptr, 'k'},
         {"nsnp", required_argument, nullptr, 'n'},
         {"fix", required_argument, nullptr, 'f'},
+        {"file", required_argument, nullptr, 'F'},
         {"rand-fix", no_argument, nullptr, 'r'},
         {"thread", required_argument, nullptr, 't'},
         {"std", no_argument, nullptr, 'd'},
@@ -100,7 +102,7 @@ int main(int argc, char* argv[])
         {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0}};
 
-    std::string prefix, out = "Out", extract, keep, herit, xvar;
+    std::string prefix, out = "Out", extract, keep, herit, xvar, fix_file;
     size_t seed = std::random_device()(), num_snp = 0, thread = 1, effect = 0;
     double fixed_effect = 0.0;
     bool use_fixed = false, standardize = false, use_rand_fixed = false;
@@ -128,6 +130,7 @@ int main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Effect size must be numeric!\n");
             }
             break;
+        case 'F': fix_file = optarg; break;
         case 'r': use_rand_fixed = true; break;
         case 's': seed = misc::convert<size_t>(optarg); break;
         case 'E': extract = optarg; break;
@@ -176,6 +179,12 @@ int main(int argc, char* argv[])
         }
         heritability.push_back(h);
     }
+    if (heritability.empty())
+    {
+        std::cerr << "Error: Must provide at least one heritability information"
+                  << std::endl;
+        exit(-1);
+    }
     std::unordered_set<std::string> snp_list;
     std::unordered_set<std::string> sample_list;
     std::unordered_set<std::string> no_varx_list;
@@ -217,6 +226,10 @@ int main(int argc, char* argv[])
         // use fixed effect
         effect_sizes.resize(num_snp);
         std::fill(effect_sizes.begin(), effect_sizes.end(), fixed_effect);
+    }
+    else if (!fix_file.empty())
+    {
+        geno.order_effects(fix_file, effect_sizes);
     }
     else
     {

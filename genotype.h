@@ -74,6 +74,8 @@ public:
     void load_snps(const std::unordered_set<std::string>& snp_list,
                    const size_t num_selected, const size_t seed);
     size_t sample_size() const { return m_sample_ct; }
+    void order_effects(const std::string& fix_file,
+                       std::vector<double>& effect_sizes);
     std::vector<SNP>
     gen_snp_vector(const std::unordered_set<std::string>& snp_list,
                    const size_t num_selected, const size_t seed);

@@ -342,3 +342,40 @@ void Genotype::check_bed(const std::string& bed_name, const size_t num_marker)
     }
     bed.close();
 }
+
+void Genotype::order_effects(const std::string& fix_file,
+                             std::vector<double>& effect_sizes)
+{
+    auto fix = misc::load_stream(fix_file);
+    std::unordered_map<std::string, double> snp_effects;
+    std::string line;
+    std::vector<std::string> token;
+    while (std::getline(*fix, line))
+    {
+        misc::trim(line);
+        if (line.empty()) continue;
+        token = misc::split(line);
+        if (token.size() != 2)
+        { std::runtime_error("Error: Expect 2 columns! Input: " + line); }
+        auto num = misc::convert<double>(token[1]);
+        if (snp_effects.find(token[0]) != snp_effects.end())
+        {
+            std::cerr << "Warning: Duplicated SNP " << token[0]
+                      << " in effect size file" << std::endl;
+            std::cerr << "will use the later effect size" << std::endl;
+        }
+        snp_effects[token[0]] = num;
+    }
+    fix.reset();
+    std::size_t not_found = 0;
+    for (auto&& snp : m_existed_snps)
+    {
+        auto found = snp_effects.find(snp.get_name());
+        if (found != snp_effects.end())
+        { effect_sizes.push_back(found->second); }
+        else
+        {
+            ++not_found;
+        }
+    }
+}

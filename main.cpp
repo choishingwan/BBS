@@ -170,7 +170,7 @@ int main(int argc, char* argv[])
     for (auto&& t : token)
     {
         double h = misc::convert<double>(t);
-        if (h<0.0 | h> 1.0)
+        if (h < 0.0 || h > 1.0)
         {
             std::cerr << "Error: Heritability must be within 0 and 1"
                       << std::endl;

@@ -51,64 +51,54 @@ Genotype::gen_sample_vector(const std::unordered_set<std::string>& sample_list,
 {
     assert(m_genotype_files.size() > 0);
     std::string fam_name = m_genotype_files.front() + ".fam";
-    std::ifstream famfile;
-    famfile.open(fam_name.c_str());
-    bool no_exclusion = sample_list.empty();
-    if (!famfile.is_open())
-    {
-        std::string error_message = "Error: Cannot open fam file: " + fam_name;
-        throw std::runtime_error(error_message);
-    }
+    auto fam_file = misc::load_stream(fam_name);
     // number of unfiltered samples
     m_unfiltered_sample_ct = 0;
     std::string line;
-    while (std::getline(famfile, line))
+    std::vector<std::string> token;
+    while (std::getline(*fam_file, line))
     {
         misc::trim(line);
         if (!line.empty())
         {
-            std::vector<std::string> token = misc::split(line);
+            token = misc::split(line);
             if (token.size() < 6)
             {
-                std::string message =
+                throw std::runtime_error(
                     "Error: Malformed fam file. Less than 6 column on "
                     "line: "
-                    + std::to_string(m_unfiltered_sample_ct + 1) + "\n";
-                throw std::runtime_error(message);
+                    + std::to_string(m_unfiltered_sample_ct + 1) + "\n");
             }
-            m_unfiltered_sample_ct++;
+            ++m_unfiltered_sample_ct;
         }
     }
     // now reset the fam file to the start
-    famfile.clear();
-    famfile.seekg(0);
+    fam_file->clear();
+    fam_file->seekg(0, fam_file->beg);
     // the unfiltered_sampel_ct is used to define the size of all vector used
     // within the program
     uintptr_t unfiltered_sample_ctl = BITCT_TO_WORDCT(m_unfiltered_sample_ct);
     m_founder_info.resize(unfiltered_sample_ctl, 0);
     m_sample_include.resize(unfiltered_sample_ctl, 0);
-
     m_num_male = 0;
     m_num_female = 0;
     m_num_ambig_sex = 0;
     m_num_non_founder = 0;
     std::vector<Sample> sample_name;
     std::unordered_set<std::string> duplicated_samples;
-
-    uintptr_t sample_index = 0; // this is just for error message
+    uintptr_t sample_index = 0; // this is just used for error message
     bool inclusion = false;
-    std::vector<std::string> token;
-    while (std::getline(famfile, line))
+    const bool no_exclusion = sample_list.empty();
+    while (std::getline(*fam_file, line))
     {
         misc::trim(line);
         if (line.empty()) continue;
         token = misc::split(line);
         if (token.size() < 6)
         {
-            std::string error_message =
+            throw std::runtime_error(
                 "Error: Malformed fam file. Less than 6 column on line: "
-                + std::to_string(sample_index + 1);
-            throw std::runtime_error(error_message);
+                + std::to_string(sample_index + 1));
         }
         Sample cur_sample;
         cur_sample.FID = token[0];
@@ -133,19 +123,19 @@ Genotype::gen_sample_vector(const std::unordered_set<std::string>& sample_list,
             SET_BIT(sample_index, m_sample_include.data());
             ++m_sample_ct;
         }
-        if (token[5].compare("1") == 0) { m_num_male++; }
+        if (token[5].compare("1") == 0) { ++m_num_male; }
         else if (token[5].compare("2") == 0)
         {
-            m_num_female++;
+            ++m_num_female;
         }
         else
         {
-            m_num_ambig_sex++;
+            ++m_num_ambig_sex;
         }
-        sample_index++;
+        ++sample_index;
         if (inclusion) { sample_name.push_back(cur_sample); }
     }
-    famfile.close();
+    fam_file.reset();
     // this is the temporary storage for reading in genotype
     // initializing here allow us to save time by not doing
     // initialization each time we read in a SNP
@@ -165,42 +155,34 @@ Genotype::gen_snp_vector(const std::unordered_set<std::string>& snp_list,
     {
         bim_name = prefix + ".bim";
         bed_name = prefix + ".bed";
-        std::ifstream bim(bim_name.c_str());
-        if (!bim.is_open())
-        {
-            std::string error_message =
-                "Error: Cannot open bim file: " + bim_name;
-            throw std::runtime_error(error_message);
-        }
+        auto bim = misc::load_stream(prefix + ".bim");
         size_t num_snp_read = 0;
         size_t num_snp = 0;
-        while (std::getline(bim, line))
+        while (std::getline(*bim, line))
         {
             misc::trim(line);
             if (line.empty()) continue;
             ++num_snp;
         }
         check_bed(bed_name, num_snp);
-        bim.clear();
-        bim.seekg(0, bim.beg);
+        bim->clear();
+        bim->seekg(0, bim->beg);
         std::string prev_chr = "";
-        while (std::getline(bim, line))
+        while (std::getline(*bim, line))
         {
             misc::trim(line);
             if (line.empty()) continue;
             bim_info = misc::split(line);
             if (bim_info.size() < 6)
             {
-                std::string error_message =
+                throw std::runtime_error(
                     "Error: Malformed bim file. Less than 6 column on "
                     "line: "
-                    + std::to_string(num_snp_read) + "\n";
-                throw std::runtime_error(error_message);
+                    + std::to_string(num_snp_read) + "\n");
             }
             if (snp_list.empty()
                 || snp_list.find(bim_info[1]) != snp_list.end())
             {
-
                 std::streampos byte_pos =
                     m_bed_offset
                     + (num_snp_read

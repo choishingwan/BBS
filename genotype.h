@@ -92,7 +92,6 @@ public:
             (m_unfiltered_sample_ct + 3) / 4;
         const uintptr_t unfiltered_sample_ctv2 = 2 * unfiltered_sample_ctl;
 
-        std::ifstream bed_file;
         std::vector<uintptr_t> genotype_byte(unfiltered_sample_ctl * 2, 0);
         std::vector<uintptr_t> sample_include2(unfiltered_sample_ctv2);
         std::vector<uintptr_t> founder_include2(unfiltered_sample_ctv2);
@@ -132,6 +131,7 @@ public:
                 num_completed / total_snp * 100);
         // loop through the SNPs. Use PLINK's founder MAF calculation script
         size_t idx = 0;
+        std::ifstream bed_file;
         for (auto&& snp : m_existed_snps)
         {
             if (prev_file != snp.file)
@@ -183,10 +183,10 @@ public:
                        + snp.byte_pos;
 
             eff = effect[idx];
-            output << snp.name << "\t" << eff << std::endl;
-            // get_score(score, genotype_byte, eff, standardize);
             maf = (het_founder_ct + alt_founder_ct * 2.0)
                   / (2.0 * (ref_founder_ct + het_founder_ct + alt_founder_ct));
+            output << snp.name << "\t" << eff << "\t" << maf << std::endl;
+            // get_score(score, genotype_byte, eff, standardize);
             var = 1.0;
             mean = 0.0;
             double miss_dose = 2.0 * maf;

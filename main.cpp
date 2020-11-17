@@ -194,6 +194,12 @@ int main(int argc, char* argv[])
         snp_list = extract_ref(std::move(extract_file), 0);
         std::cerr << "Keeping " << snp_list.size() << " SNPs" << std::endl;
     }
+    else if (!fix_file.empty())
+    {
+        auto extract_file = misc::load_stream(fix_file);
+        snp_list = extract_ref(std::move(extract_file), 0);
+        std::cerr << "Keeping " << snp_list.size() << " SNPs" << std::endl;
+    }
     if (!keep.empty())
     {
         auto keep_file = misc::load_stream(keep);
@@ -207,15 +213,14 @@ int main(int argc, char* argv[])
     // relatedness file should contain two column, ID1 and ID2, which
     // represents the related pair. Here, we will always exclude
     // sample in the second column from the variance calculation
+
     // Read in the PLINK file information
     std::mt19937 g(seed);
     std::normal_distribution<double> norm_dist(0, 1);
     std::chi_squared_distribution<double> chi_dist(1);
     std::exponential_distribution<double> exp_dis(1);
     if (use_rand_fixed) { fixed_effect = norm_dist(g); }
-
     Genotype geno(prefix);
-
     geno.load_samples(sample_list, no_varx_list);
     geno.load_snps(snp_list, num_snp, seed);
     std::vector<double> score(geno.sample_size(), 0.0);
